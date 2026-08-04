@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -12,13 +13,19 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+	// Attempt to load .env from current directory or parent directory
+	if err := godotenv.Load(".env"); err != nil {
+		if err := godotenv.Load("../.env"); err != nil {
+			log.Println("Notice: No .env file found in current or parent directory. Relying on system environment variables.")
+		}
 	}
 
-	var config *Config = &Config{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL environment variable is missing")
 	}
-	return config, nil
+
+	return &Config{
+		DatabaseURL: dbURL,
+	}, nil
 }
