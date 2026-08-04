@@ -4,7 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/google/uuid"
 )
+
+type Page struct {
+	PageID uuid.UUID `json:"pageid"`
+	Name   string    `json:"name"`
+}
 
 func main() {
 	mux := http.NewServeMux()
@@ -14,7 +21,7 @@ func main() {
 	})
 
 	fmt.Println("Server running on :8080")
-	if err:=http.ListenAndServe(":8080", mux); err!=nil{
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal("Error Starting Server")
 	}
 }
