@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -11,6 +12,14 @@ import (
 type Page struct {
 	PageID uuid.UUID `json:"pageid"`
 	Name   string    `json:"name"`
+}
+
+type Board struct {
+	BoardID   string    `json:"board"`
+	Title     string    `json:"title"`
+	Pages     []Page    `json:"pages"`
+	CreatedAt time.Time `json:"createdat"`
+	UpdatedAt time.Time `json:"updatedat,omitempty"`
 }
 
 func main() {
