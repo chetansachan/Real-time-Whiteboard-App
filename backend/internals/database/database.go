@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -15,6 +17,17 @@ import (
 )
 
 func runDatabaseMigrations(db *sql.DB) {
+	var tableExists bool
+	checkQuery := "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'boards')"
+	if err := db.QueryRow(checkQuery).Scan(&tableExists); err != nil {
+		log.Printf("Warning checking table existence: %v", err)
+	}
+
+	if !tableExists {
+		log.Println("Table 'boards' does not exist. Resetting migration tracker to execute migrations...")
+		_, _ = db.Exec("DROP TABLE IF EXISTS schema_migrations")
+	}
+
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		log.Fatalf("Could not create migration database driver: %v", err)
@@ -26,20 +39,56 @@ func runDatabaseMigrations(db *sql.DB) {
 	}
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		log.Printf("Migration run initial check: %v. Attempting version sync...", err)
-		if forceErr := m.Force(1); forceErr == nil {
-			if retryErr := m.Up(); retryErr == nil || retryErr == migrate.ErrNoChange {
-				log.Println("Database migration version synchronized: Up to date.")
-				return
-			}
-		}
 		log.Fatalf("Migration run failed: %v", err)
 	}
 
 	log.Println("Database migration validation complete: Up to date.")
 }
 
+func ensureDatabaseExists(databaseURL string) error {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return fmt.Errorf("unable to parse database URL: %w", err)
+	}
+
+	targetDB := strings.TrimPrefix(u.Path, "/")
+	if targetDB == "" || targetDB == "postgres" {
+		return nil
+	}
+
+	u.Path = "/postgres"
+	defaultConnStr := u.String()
+
+	db, err := sql.Open("postgres", defaultConnStr)
+	if err != nil {
+		return fmt.Errorf("failed to open default postgres connection: %w", err)
+	}
+	defer db.Close()
+
+	var exists bool
+	query := "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)"
+	if err := db.QueryRow(query, targetDB).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to query database existence: %w", err)
+	}
+
+	if !exists {
+		log.Printf("Database %q does not exist. Creating database in PostgreSQL...", targetDB)
+		createSQL := fmt.Sprintf("CREATE DATABASE %q", targetDB)
+		if _, err := db.Exec(createSQL); err != nil {
+			return fmt.Errorf("failed to create database %q: %w", targetDB, err)
+		}
+		log.Printf("Successfully created database %q in PostgreSQL", targetDB)
+	}
+
+	return nil
+}
+
 func Connect(databaseURL string) (*pgxpool.Pool, error) {
+	if err := ensureDatabaseExists(databaseURL); err != nil {
+		log.Printf("Error verifying/creating database: %v", err)
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

@@ -11,8 +11,6 @@ import (
 )
 
 func main() {
-	router := routers.SetupRouter()
-
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal("Failed to load Configuration:", err)
@@ -23,6 +21,8 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer pool.Close()
+
+	router := routers.SetupRouter(pool)
 
 	fmt.Println("Server running on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

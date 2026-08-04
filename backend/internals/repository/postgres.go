@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,13 +9,42 @@ import (
 	"realtime-whiteboard/internals/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func GetBoardByID(db *sql.DB, id uuid.UUID) (model.Board, error) {
+type BoardRepository struct {
+	pool *pgxpool.Pool
+}
+
+func NewBoardRepository(pool *pgxpool.Pool) *BoardRepository {
+	return &BoardRepository{pool: pool}
+}
+
+func (r *BoardRepository) CreateBoard(ctx context.Context, board *model.Board) error {
+	pagesBytes, err := json.Marshal(board.Pages)
+	if err != nil {
+		return fmt.Errorf("failed to marshal pages: %w", err)
+	}
+
+	query := `
+		INSERT INTO boards (board_id, title, pages, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+
+	_, err = r.pool.Exec(ctx, query, board.BoardID, board.Title, pagesBytes, board.CreatedAt, board.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to insert board into database: %w", err)
+	}
+
+	return nil
+}
+
+func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model.Board, error) {
 	var b model.Board
 	var pagesData []byte
 
-	err := db.QueryRow("SELECT board_id, title, pages, created_at, updated_at FROM boards WHERE board_id = $1", id).Scan(&b.BoardID, &b.Title, &pagesData, &b.CreatedAt, &b.UpdatedAt)
+	query := `SELECT board_id, title, pages, created_at, updated_at FROM boards WHERE board_id = $1`
+	err := r.pool.QueryRow(ctx, query, id).Scan(&b.BoardID, &b.Title, &pagesData, &b.CreatedAt, &b.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return b, fmt.Errorf("board not found")

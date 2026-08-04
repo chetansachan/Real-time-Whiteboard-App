@@ -2,31 +2,29 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
-	"time"
 
-	"realtime-whiteboard/internals/model"
-
-	"github.com/google/uuid"
+	"realtime-whiteboard/internals/service"
 )
 
-type BoardController struct{}
-
-func NewBoardController() *BoardController {
-	return &BoardController{}
+type BoardController struct {
+	boardService *service.BoardService
 }
 
-func (c *BoardController) CreateBoard(w http.ResponseWriter, r *http.Request) {
+func NewBoardController(boardService *service.BoardService) *BoardController {
+	return &BoardController{boardService: boardService}
+}
+
+func (c *BoardController) CreateBoardController(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req struct {
-		Title string `json:"title"`
-	}
-
+	// 1. Decode JSON directly into service.CreateBoardRequest
+	var req service.CreateBoardRequest
 	if r.Body != nil {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
 			http.Error(w, "Error Invalid JSON", http.StatusBadRequest)
@@ -34,26 +32,23 @@ func (c *BoardController) CreateBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Title == "" {
-		req.Title = "Unnamed Board"
+	// 2. Pass request to service for validation & board creation
+	board, err := c.boardService.CreateBoardService(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, service.ErrTitleTooLong) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
-	board := model.Board{
-		BoardID: uuid.New(),
-		Title:   req.Title,
-		Pages: []model.Page{
-			{
-				PageID: uuid.New(),
-				Name:   "1",
-			},
-		},
-		CreatedAt: time.Now().UTC(),
-	}
-
+	// 3. Encode response board to JSON
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(board); err != nil {
-		http.Error(w, "Error Encoding data", http.StatusInternalServerError)
+		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
 		return
 	}
 }
+

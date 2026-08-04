@@ -1,0 +1,62 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"realtime-whiteboard/internals/model"
+	"realtime-whiteboard/internals/repository"
+
+	"github.com/google/uuid"
+)
+
+var (
+	ErrTitleTooLong = errors.New("title cannot exceed 255 characters")
+)
+
+type BoardService struct {
+	repo *repository.BoardRepository
+}
+
+func NewBoardService(repo *repository.BoardRepository) *BoardService {
+	return &BoardService{repo: repo}
+}
+
+type CreateBoardRequest struct {
+	Title string `json:"title"`
+}
+
+func (s *BoardService) CreateBoardService(ctx context.Context, req CreateBoardRequest) (model.Board, error) {
+	// Sanitize & Validate Title
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = "Unnamed Board"
+	}
+
+	if len(title) > 255 {
+		return model.Board{}, ErrTitleTooLong
+	}
+
+	// Construct Domain Model
+	board := model.Board{
+		BoardID: uuid.New(),
+		Title:   title,
+		Pages: []model.Page{
+			{
+				PageID: uuid.New(),
+				Name:   "1",
+			},
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	// Save to Database
+	if err := s.repo.CreateBoard(ctx, &board); err != nil {
+		return model.Board{}, fmt.Errorf("failed to save board to database: %w", err)
+	}
+
+	return board, nil
+}
