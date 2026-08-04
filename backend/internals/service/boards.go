@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	ErrTitleTooLong = errors.New("title cannot exceed 255 characters")
+	ErrTitleTooLong   = errors.New("title cannot exceed 255 characters")
+	ErrBoardNotFound  = errors.New("board not found")
 )
 
 type BoardService struct {
@@ -56,6 +57,23 @@ func (s *BoardService) CreateBoardService(ctx context.Context, req CreateBoardRe
 	// Save to Database
 	if err := s.repo.CreateBoard(ctx, &board); err != nil {
 		return model.Board{}, fmt.Errorf("failed to save board to database: %w", err)
+	}
+
+	return board, nil
+}
+
+func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (model.Board, error) {
+	boardID, err := uuid.Parse(idStr)
+	if err != nil {
+		return model.Board{}, ErrBoardNotFound
+	}
+
+	board, err := s.repo.GetBoardByID(ctx, boardID)
+	if err != nil {
+		if errors.Is(err, repository.ErrBoardNotFound) {
+			return model.Board{}, ErrBoardNotFound
+		}
+		return model.Board{}, fmt.Errorf("failed to get board from database: %w", err)
 	}
 
 	return board, nil

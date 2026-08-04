@@ -22,6 +22,7 @@ func SetupRouter(pool *pgxpool.Pool) *http.ServeMux {
 	})
 
 	mux.HandleFunc("POST /api/boards", boardController.CreateBoardController)
+	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)
 
 	return mux
 }

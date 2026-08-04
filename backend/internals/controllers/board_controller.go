@@ -52,3 +52,27 @@ func (c *BoardController) CreateBoardController(w http.ResponseWriter, r *http.R
 	}
 }
 
+func (c *BoardController) GetBoardByIDController(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.PathValue("id")
+	board, err := c.boardService.GetBoardByIDService(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, service.ErrBoardNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(board); err != nil {
+		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
+		return
+	}
+}

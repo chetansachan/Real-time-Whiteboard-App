@@ -4,13 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"realtime-whiteboard/internals/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrBoardNotFound = errors.New("board not found")
 
 type BoardRepository struct {
 	pool *pgxpool.Pool
@@ -46,8 +50,8 @@ func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model
 	query := `SELECT board_id, title, pages, created_at, updated_at FROM boards WHERE board_id = $1`
 	err := r.pool.QueryRow(ctx, query, id).Scan(&b.BoardID, &b.Title, &pagesData, &b.CreatedAt, &b.UpdatedAt)
 
-	if err == sql.ErrNoRows {
-		return b, fmt.Errorf("board not found")
+	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
+		return b, ErrBoardNotFound
 	} else if err != nil {
 		return b, err
 	}
