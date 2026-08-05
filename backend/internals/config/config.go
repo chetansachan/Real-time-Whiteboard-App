@@ -15,9 +15,8 @@ type Config struct {
 func Load() (*Config, error) {
 	// Attempt to load .env from current directory or parent directory
 	if err := godotenv.Load(".env"); err != nil {
-		if err := godotenv.Load("../.env"); err != nil {
-			log.Println("Notice: No .env file found in current or parent directory. Relying on system environment variables.")
-		}
+			log.Println(".env file not found")
+
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")

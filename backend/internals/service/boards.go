@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	ErrTitleTooLong   = errors.New("title cannot exceed 255 characters")
-	ErrBoardNotFound  = errors.New("board not found")
+	ErrTitleTooLong  = errors.New("title cannot exceed 255 characters")
+	ErrBoardNotFound = errors.New("board not found")
 )
 
 type BoardService struct {
@@ -62,19 +62,39 @@ func (s *BoardService) CreateBoardService(ctx context.Context, req CreateBoardRe
 	return board, nil
 }
 
-func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (model.Board, error) {
+type Snapshot struct {
+	PageID   string   `json:"pageId"`
+	Elements []string `json:"elements"`
+}
+
+type GetBoardByIDRespone struct {
+	model.Board
+	Cursor   int      `json:"cursor"`
+	Snapshot Snapshot `json:"snapshot"`
+}
+
+func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (GetBoardByIDRespone, error) {
 	boardID, err := uuid.Parse(idStr)
 	if err != nil {
-		return model.Board{}, ErrBoardNotFound
+		return GetBoardByIDRespone{}, ErrBoardNotFound
 	}
 
 	board, err := s.repo.GetBoardByID(ctx, boardID)
 	if err != nil {
 		if errors.Is(err, repository.ErrBoardNotFound) {
-			return model.Board{}, ErrBoardNotFound
+			return GetBoardByIDRespone{}, ErrBoardNotFound
 		}
-		return model.Board{}, fmt.Errorf("failed to get board from database: %w", err)
+		return GetBoardByIDRespone{}, fmt.Errorf("failed to get board from database: %w", err)
 	}
 
-	return board, nil
+	res := GetBoardByIDRespone{
+		Board: board,
+		Snapshot: Snapshot{
+			PageID:   "1",
+			Elements: []string{},
+		},
+		Cursor: 184,
+	}
+
+	return res, nil
 }

@@ -59,7 +59,7 @@ func (c *BoardController) GetBoardByIDController(w http.ResponseWriter, r *http.
 	}
 
 	id := r.PathValue("id")
-	board, err := c.boardService.GetBoardByIDService(r.Context(), id)
+	boardWithSnapshot, err := c.boardService.GetBoardByIDService(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, service.ErrBoardNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -71,7 +71,7 @@ func (c *BoardController) GetBoardByIDController(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(board); err != nil {
+	if err := json.NewEncoder(w).Encode(boardWithSnapshot); err != nil {
 		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
 		return
 	}
