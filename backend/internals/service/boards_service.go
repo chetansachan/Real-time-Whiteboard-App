@@ -100,8 +100,8 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 }
 
 
-func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) (GetBoardByIDRespone,error) {
-	id, err := uuid.Parse(idStg)
+func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStr string, newtitle string) (GetBoardByIDRespone,error) {
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		return GetBoardByIDRespone{}, ErrBoardNotFound
 	}
@@ -115,6 +115,29 @@ func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string,
 		Board: board,
 		Snapshot: Snapshot{
 			PageID:   "1",
+			Elements: []string{},
+		},
+		Cursor: 184,
+	}
+
+	return res, nil
+}
+
+func (s *BoardService) AddPageByIDService(ctx context.Context, idStr string, pagename string) (GetBoardByIDRespone,error){
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return GetBoardByIDRespone{}, ErrBoardNotFound
+	}
+
+	board, err2 := s.repo.AddPageByID(ctx, id, pagename)
+	if err2 != nil {
+		return GetBoardByIDRespone{}, fmt.Errorf("failed to update board title: %w", err)
+	}
+
+	res := GetBoardByIDRespone{
+		Board: board,
+		Snapshot: Snapshot{
+			PageID:   pagename,
 			Elements: []string{},
 		},
 		Cursor: 184,
