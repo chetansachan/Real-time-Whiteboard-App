@@ -71,12 +71,8 @@ func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, tit
 		SET title = $1, updated_at = NOW() 
 		WHERE board_id = $2;
 	`
-	cmdTag, err := r.pool.Exec(ctx, query, title, id)
-	if err != nil {
+	if _, err:= r.pool.Exec(ctx,query,title,id); err != nil{
 		return fmt.Errorf("failed to update board into database: %w", err)
-	}
-	if cmdTag.RowsAffected() == 0 {
-		return ErrBoardNotFound
 	}
 	return nil
 }
