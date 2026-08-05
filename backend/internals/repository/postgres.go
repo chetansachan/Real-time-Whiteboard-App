@@ -38,11 +38,7 @@ func (r *BoardRepository) CreateBoard(ctx context.Context, board *model.Board) e
 		VALUES ($1, $2, $3)
 	`
 	for _, page := range board.Pages {
-		pageID := page.PageID
-		if pageID == uuid.Nil {
-			pageID = uuid.New()
-		}
-		_, err := r.pool.Exec(ctx, queryPage, pageID, board.BoardID, page.Name)
+		_, err := r.pool.Exec(ctx, queryPage, page.PageID, board.BoardID, page.Name)
 		if err != nil {
 			return fmt.Errorf("failed to insert page into database: %w", err)
 		}
