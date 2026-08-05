@@ -112,14 +112,22 @@ func (c *BoardController) AddPageByIDController(w http.ResponseWriter, r *http.R
 	}
 
 	var p model.Page
-	if err := json.NewDecoder(r.Body).Decode(&p.Name); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		http.Error(w, "Error Invalis JSON", http.StatusBadRequest)
 		return
 	}
 
 	id := r.PathValue("id")
 	board, err := c.boardService.AddPageByIDService(r.Context(), id, p.Name)
 	if err != nil {
+		if errors.Is(err, service.ErrPageNameRequired) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, service.ErrBoardNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

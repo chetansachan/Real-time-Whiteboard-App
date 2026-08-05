@@ -112,18 +112,19 @@ func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, tit
 	return board, nil
 }
 
-func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name string) (model.Board, error){
-	var board model.Board
-	queryPage :=`
-		INSERT INTO pages (board_id, name, page_id)
-		VALUES ($1, $2, $3)
-		WHERE board_id = $1
-	`
-	for _, page := range board.Pages {
-		_, err := r.pool.Exec(ctx, queryPage, page.PageID, board.BoardID, name)
-		if err != nil {
-			return model.Board{},fmt.Errorf("failed to insert page into database: %w", err)
-		}
+func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name string) (model.Page, error) {
+	page := model.Page{
+		PageID: uuid.New(),
+		Name:   name,
 	}
-	return board, nil	
+	queryPage := `
+		INSERT INTO pages (page_id, board_id, name)
+		VALUES ($1, $2, $3)
+	`
+	_, err := r.pool.Exec(ctx, queryPage, page.PageID, id, page.Name)
+	if err != nil {
+		return model.Page{}, fmt.Errorf("failed to insert page into database: %w", err)
+	}
+	return page, nil
 }
+

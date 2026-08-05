@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	ErrTitleTooLong  = errors.New("title cannot exceed 255 characters")
-	ErrBoardNotFound = errors.New("board not found")
+	ErrTitleTooLong     = errors.New("title cannot exceed 255 characters")
+	ErrBoardNotFound    = errors.New("board not found")
+	ErrPageNameRequired = errors.New("page name is required")
 )
 
 type BoardService struct {
@@ -69,8 +70,8 @@ type Snapshot struct {
 
 type GetBoardByIDRespone struct {
 	model.Board
-	Cursor   int      `json:"cursor"`
 	Snapshot Snapshot `json:"snapshot"`
+	Cursor   int      `json:"cursor"`
 }
 
 func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (GetBoardByIDRespone, error) {
@@ -123,21 +124,31 @@ func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStr string,
 	return res, nil
 }
 
-func (s *BoardService) AddPageByIDService(ctx context.Context, idStr string, pagename string) (GetBoardByIDRespone,error){
+func (s *BoardService) AddPageByIDService(ctx context.Context, idStr string, pagename string) (GetBoardByIDRespone, error) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		return GetBoardByIDRespone{}, ErrBoardNotFound
 	}
 
-	board, err2 := s.repo.AddPageByID(ctx, id, pagename)
-	if err2 != nil {
-		return GetBoardByIDRespone{}, fmt.Errorf("failed to update board title: %w", err)
+	name := strings.TrimSpace(pagename)
+	if name == "" {
+		return GetBoardByIDRespone{}, ErrPageNameRequired
+	}
+
+	page, err := s.repo.AddPageByID(ctx, id, name)
+	if err != nil {
+		return GetBoardByIDRespone{}, fmt.Errorf("failed to make new page: %w", err)
+	}
+
+	board, err := s.repo.GetBoardByID(ctx, id)
+	if err != nil {
+		return GetBoardByIDRespone{}, fmt.Errorf("failed to get board from database: %w", err)
 	}
 
 	res := GetBoardByIDRespone{
 		Board: board,
 		Snapshot: Snapshot{
-			PageID:   pagename,
+			PageID:   page.PageID.String(),
 			Elements: []string{},
 		},
 		Cursor: 184,
