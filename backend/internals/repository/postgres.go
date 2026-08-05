@@ -65,14 +65,22 @@ func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model
 	return b, nil
 }
 
-func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, title string) error {
+func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, title string) (model.Board, error) {
+	var board model.Board
+	var pagesData []byte
 	query := `
 		UPDATE boards 
 		SET title = $1, updated_at = NOW() 
-		WHERE board_id = $2;
+		WHERE board_id = $2
+		RETURNING board_id, title, pages, created_at, updated_at
 	`
-	if _, err:= r.pool.Exec(ctx,query,title,id); err != nil{
-		return fmt.Errorf("failed to update board into database: %w", err)
+	if err:= r.pool.QueryRow(ctx,query,title,id).Scan(&board.BoardID, &board.Title, &pagesData, &board.CreatedAt, &board.UpdatedAt); err != nil{
+		return model.Board{}, fmt.Errorf("failed to update board into database: %w", err)
 	}
-	return nil
+
+		if err := json.Unmarshal(pagesData, &board.Pages); err != nil {
+			return board, fmt.Errorf("failed to parse board pages: %w", err)
+		}
+
+	return board, nil
 }

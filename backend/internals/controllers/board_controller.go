@@ -77,9 +77,9 @@ func (c *BoardController) GetBoardByIDController(w http.ResponseWriter, r *http.
 	}
 }
 
-func (c *BoardController) UpdateBoardByIDController(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodPatch{
-		http.Error(w, "Method not allowed", http.StatusBadRequest)
+func (c *BoardController) UpdateBoardByIDController(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -90,9 +90,16 @@ func (c *BoardController) UpdateBoardByIDController(w http.ResponseWriter, r *ht
 	}
 
 	id := r.PathValue("id")
-	if err := c.boardService.UpdateBoardByIDService(r.Context(),id, req.Title); err != nil {
+	updatedBoard, err := c.boardService.UpdateBoardByIDService(r.Context(), id, req.Title)
+	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(updatedBoard); err != nil {
+		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
+		return
+	}
 }

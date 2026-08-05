@@ -100,16 +100,25 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 }
 
 
-func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) error{
+func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) (GetBoardByIDRespone,error) {
 	id, err := uuid.Parse(idStg)
 	if err != nil {
-		return ErrBoardNotFound
+		return GetBoardByIDRespone{}, ErrBoardNotFound
 	}
 
-	err2 := s.repo.UpdateBoardByID(ctx, id, newtitle)
+	board, err2 := s.repo.UpdateBoardByID(ctx, id, newtitle)
 	if err2 != nil {
-		return fmt.Errorf("failed to update board title: %w", err)
+		return GetBoardByIDRespone{}, fmt.Errorf("failed to update board title: %w", err)
 	}
 
-	return nil
+	res := GetBoardByIDRespone{
+		Board: board,
+		Snapshot: Snapshot{
+			PageID:   "1",
+			Elements: []string{},
+		},
+		Cursor: 184,
+	}
+
+	return res, nil
 }
