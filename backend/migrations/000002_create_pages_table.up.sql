@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS pages (
+    page_id UUID PRIMARY KEY,
+    board_id UUID NOT NULL REFERENCES boards(board_id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL
+);
