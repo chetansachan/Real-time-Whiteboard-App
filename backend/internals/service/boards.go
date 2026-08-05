@@ -100,15 +100,23 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 }
 
 
-func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) error{
+func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) error {
+	title := strings.TrimSpace(newtitle)
+	if len(title) > 255 {
+		return ErrTitleTooLong
+	}
+
 	id, err := uuid.Parse(idStg)
 	if err != nil {
 		return ErrBoardNotFound
 	}
 
-	err2 := s.repo.UpdateBoardByID(ctx, id, newtitle)
+	err2 := s.repo.UpdateBoardByID(ctx, id, title)
 	if err2 != nil {
-		return fmt.Errorf("failed to update board title: %w", err)
+		if errors.Is(err2, repository.ErrBoardNotFound) {
+			return ErrBoardNotFound
+		}
+		return fmt.Errorf("failed to update board title: %w", err2)
 	}
 
 	return nil

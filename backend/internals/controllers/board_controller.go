@@ -76,3 +76,23 @@ func (c *BoardController) GetBoardByIDController(w http.ResponseWriter, r *http.
 		return
 	}
 }
+
+func (c *BoardController) UpdateBoardByIDController(w http.ResponseWriter, r *http.Request){
+	if r.Method != http.MethodPatch{
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+
+	var req service.CreateBoardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Error Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	id := r.PathValue("id")
+	if err := c.boardService.UpdateBoardByIDService(r.Context(),id, req.Title); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}

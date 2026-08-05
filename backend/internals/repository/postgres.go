@@ -67,12 +67,16 @@ func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model
 
 func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, title string) error {
 	query := `
-		UPDATE board 
-		SET title = $1 
-		WHERE id = $2;
+		UPDATE boards 
+		SET title = $1, updated_at = NOW() 
+		WHERE board_id = $2;
 	`
-	if _, err:= r.pool.Exec(ctx,query,title,id); err != nil{
+	cmdTag, err := r.pool.Exec(ctx, query, title, id)
+	if err != nil {
 		return fmt.Errorf("failed to update board into database: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return ErrBoardNotFound
 	}
 	return nil
 }
