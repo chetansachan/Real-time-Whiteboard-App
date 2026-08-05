@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"realtime-whiteboard/internals/model"
 	"realtime-whiteboard/internals/service"
 )
 
@@ -99,6 +100,33 @@ func (c *BoardController) UpdateBoardByIDController(w http.ResponseWriter, r *ht
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(updatedBoard); err != nil {
+		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *BoardController) AddPageByIDController(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var p model.Page
+	if err := json.NewDecoder(r.Body).Decode(&p.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	id := r.PathValue("id")
+	board, err := c.boardService.AddPageByIDService(r.Context(), id, p.Name)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(board); err != nil {
 		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
 		return
 	}
