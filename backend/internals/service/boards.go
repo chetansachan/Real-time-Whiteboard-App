@@ -98,3 +98,18 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 
 	return res, nil
 }
+
+
+func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStg string, newtitle string) error{
+	id, err := uuid.Parse(idStg)
+	if err != nil {
+		return ErrBoardNotFound
+	}
+
+	err2 := s.repo.UpdateBoardByID(ctx, id, newtitle)
+	if err2 != nil {
+		return fmt.Errorf("failed to update board title: %w", err)
+	}
+
+	return nil
+}
