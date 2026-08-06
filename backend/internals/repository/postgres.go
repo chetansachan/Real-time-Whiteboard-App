@@ -129,13 +129,26 @@ func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name st
 }
 
 func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error) {
-	var b model.Boards
-	query := `
-		SELETE * FROM boards
-	`
-	_, err := r.pool.Exec(ctx, query, b)
+	var result model.Boards
+	result.Boards = []model.Board{}
+
+	queryBoards := `SELECT board_id, title, created_at, updated_at FROM boards`
+	rows, err := r.pool.Query(ctx, queryBoards)
 	if err != nil {
 		return model.Boards{}, fmt.Errorf("failed to get boards from database: %w", err)
 	}
-	return b, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var b model.Board
+		if err := rows.Scan(&b.BoardID, &b.Title, &b.CreatedAt, &b.UpdatedAt); err != nil {
+			return model.Boards{}, fmt.Errorf("failed to scan board: %w", err)
+		}
+		b.Pages = []model.Page{}
+		result.Boards = append(result.Boards, b)
+	}
+	if err := rows.Err(); err != nil {
+		return model.Boards{}, fmt.Errorf("error iterating boards rows: %w", err)
+	}
+	return result, nil
 }
