@@ -111,4 +111,7 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Send:    make(chan []byte, 256),
 	}
 	hub.Register <- client
+
+	go client.readPump(hub)
+	go client.writePump()
 }
