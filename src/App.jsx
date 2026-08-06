@@ -1,22 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  BookOpen,
+  Code,
   Copy,
+  Edit2,
   Eye,
   FolderOpen,
+  Grid,
   Home,
   Info,
+  Layers,
+  List,
   LoaderCircle,
   LogIn,
   LogOut,
   MessageSquare,
   Mic,
+  MoreVertical,
   Palette,
+  Play,
   Plus,
   Redo2,
+  RefreshCw,
   Save,
+  Scroll,
+  Search,
   Send,
   Shapes,
+  Sparkles,
   Trash2,
   Type,
   Undo2,
@@ -27,7 +39,7 @@ import {
   ZoomOut
 } from "lucide-react";
 import { COLORS, FILL_COLORS, TOOLS } from "./constants/whiteboard.js";
-import { useBoardApi } from "./hooks/useBoardApi.js";
+import { useBoardApi, useBoardsList } from "./hooks/useBoardApi.js";
 import { usePersistentBoard } from "./hooks/usePersistentBoard.js";
 import { getApiBaseUrl } from "./services/boardApi.js";
 import { renderElement, renderSelectionBox } from "./utils/canvasRenderer.js";
@@ -56,6 +68,27 @@ import {
 } from "./utils/whiteboard.js";
 import "./App.css";
 
+const CARD_ICONS = [BookOpen, Palette, Sparkles, Code, Scroll, Shapes, Layers];
+const CARD_BG_COLORS = ["#5b4970", "#335359", "#5c4a36", "#394b66", "#4d3d52", "#335645"];
+
+function getCardIcon(index) {
+  return CARD_ICONS[index % CARD_ICONS.length];
+}
+
+function getCardBgColor(index) {
+  return CARD_BG_COLORS[index % CARD_BG_COLORS.length];
+}
+
+function formatDate(isoString) {
+  if (!isoString) return "Recently";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "Recently";
+  }
+}
+
 export default function App() {
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
@@ -80,7 +113,35 @@ export default function App() {
   const [remoteCursor, setRemoteCursor] = useState({ x: 790, y: 140 });
   const [isCallOpen, setIsCallOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+
+  // Dashboard state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOption, setSortOption] = useState("recent");
+  const [viewMode, setViewMode] = useState("grid");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [activeMenuBoardId, setActiveMenuBoardId] = useState(null);
+  const [renameBoardData, setRenameBoardData] = useState(null);
+  const [renameTitleInput, setRenameTitleInput] = useState("");
+
   const boardApi = useBoardApi({ board, enabled: isBoardOpen, setBoard, setToast });
+  const { data: boardsData, isLoading: isLoadingBoards, refetch: refetchBoards } = useBoardsList({ enabled: !isBoardOpen });
+  const allBoards = boardsData?.boards || [];
+
+  const filteredBoards = useMemo(() => {
+    let list = [...allBoards];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((b) => (b.title || "").toLowerCase().includes(q) || (b.boardId || "").toLowerCase().includes(q));
+    }
+    if (sortOption === "name") {
+      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    } else if (sortOption === "oldest") {
+      list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    } else {
+      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    return list;
+  }, [allBoards, searchQuery, sortOption]);
 
   const activePage = useMemo(() => getActivePage(board), [board]);
   const elements = useMemo(() => activePage?.elements || [], [activePage]);
@@ -196,6 +257,50 @@ export default function App() {
 
   const handleContinueBoard = () => {
     setIsBoardOpen(true);
+  };
+
+  const handleOpenExistingBoard = async (boardId, title) => {
+    setLoadBoardId(boardId);
+    try {
+      await boardApi.loadBoard(boardId);
+      setIsBoardOpen(true);
+      setToast(`Opened: ${title || "Board"}`);
+    } catch {
+      setToast("Could not load board");
+    }
+  };
+
+  const handleModalCreateSubmit = async (event) => {
+    event.preventDefault();
+    const title = createTitle.trim() || "Untitled board";
+    try {
+      const remoteBoard = await boardApi.createNewBoard(title);
+      setLoadBoardId(remoteBoard.boardId || "");
+      setIsCreateModalOpen(false);
+      setIsBoardOpen(true);
+      setToast("Board created!");
+    } catch {
+      setToast("Could not create board");
+    }
+  };
+
+  const handleStartRename = (b) => {
+    setActiveMenuBoardId(null);
+    setRenameBoardData(b);
+    setRenameTitleInput(b.title || "");
+  };
+
+  const handleRenameSubmit = async (event) => {
+    event.preventDefault();
+    if (!renameBoardData) return;
+    const newTitle = renameTitleInput.trim() || "Untitled board";
+    try {
+      await boardApi.renameBoardTitle(renameBoardData.boardId, newTitle);
+      setRenameBoardData(null);
+      setToast("Board renamed!");
+    } catch {
+      setToast("Could not rename board");
+    }
   };
 
   const saveTitleToBackend = async () => {
@@ -592,62 +697,278 @@ export default function App() {
 
   if (!isBoardOpen) {
     return (
-      <div className="app-shell">
-        <main className="board-gate" aria-label="Board start screen">
-          <section className="board-gate-panel">
-            <div className="brand gate-brand" aria-label="Realtime whiteboard logo">
+      <div className="notebook-shell">
+        <header className="notebook-header">
+          <div className="notebook-brand">
+            <div className="notebook-logo">
               <span>Aw</span>
             </div>
-            <div className="board-gate-heading">
-              <h1>Real-Time Whiteboard</h1>
-              <p>Create a backend board or load an existing board by ID.</p>
-            </div>
+            <span className="notebook-brand-title">Realtime Whiteboard</span>
+          </div>
 
-            <div className={`api-pill gate-api ${boardApi.status}`} title={boardApi.error || getApiBaseUrl()}>
-              {boardApi.status === "offline" ? "API offline" : boardApi.status === "saving" ? "Working" : "API ready"}
-            </div>
-
-            <div className="board-gate-grid">
-              <form className="board-action-card" onSubmit={handleCreateBoard}>
-                <div className="board-action-title">
-                  <Plus size={20} />
-                  <strong>Create board</strong>
-                </div>
-                <input
-                  value={createTitle}
-                  onChange={(event) => setCreateTitle(event.target.value)}
-                  placeholder="Board title"
-                  aria-label="New board title"
-                />
-                <button type="submit" disabled={boardApi.isCreatingBoard}>
-                  {boardApi.isCreatingBoard ? "Creating..." : "Create and open"}
-                </button>
-              </form>
-
-              <form className="board-action-card" onSubmit={handleLoadBoard}>
-                <div className="board-action-title">
-                  <FolderOpen size={20} />
-                  <strong>Load board</strong>
-                </div>
-                <input
-                  value={loadBoardId}
-                  onChange={(event) => setLoadBoardId(event.target.value)}
-                  placeholder="Paste board ID"
-                  aria-label="Existing board ID"
-                />
-                <button type="submit" disabled={boardApi.isLoadingBoard}>
-                  {boardApi.isLoadingBoard ? "Loading..." : "Load board"}
-                </button>
-              </form>
-            </div>
-
-            {board.boardId && (
-              <button className="continue-board" type="button" onClick={handleContinueBoard}>
-                Continue saved board
+          <div className="notebook-search-wrap">
+            <Search size={17} className="notebook-search-icon" />
+            <input
+              type="text"
+              className="notebook-search-input"
+              placeholder="Search boards by title or ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" className="notebook-search-clear" onClick={() => setSearchQuery("")}>
+                <X size={14} />
               </button>
             )}
-          </section>
+          </div>
+
+          <div className="notebook-header-controls">
+            <div className="view-mode-toggle">
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === "grid" ? "active" : ""}`}
+                onClick={() => setViewMode("grid")}
+                title="Grid view"
+              >
+                <Grid size={17} />
+              </button>
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === "list" ? "active" : ""}`}
+                onClick={() => setViewMode("list")}
+                title="List view"
+              >
+                <List size={17} />
+              </button>
+            </div>
+
+            <div className="sort-select-wrap">
+              <select
+                className="notebook-sort-select"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value)}
+              >
+                <option value="recent">Most recent</option>
+                <option value="oldest">Oldest</option>
+                <option value="name">Title (A-Z)</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              className="notebook-primary-btn"
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              <Plus size={18} />
+              <span>Create new</span>
+            </button>
+          </div>
+        </header>
+
+        <main className="notebook-content">
+          <div className="notebook-section-head">
+            <h2>My boards ({filteredBoards.length})</h2>
+            <div className="section-head-actions">
+              <button
+                type="button"
+                className="notebook-icon-btn"
+                onClick={() => refetchBoards()}
+                title="Refresh list"
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          </div>
+
+          <div className={`notebook-cards-container ${viewMode === "list" ? "is-list" : ""}`}>
+            {/* CARD 1: CREATE NEW BOARD */}
+            <div
+              className="notebook-card create-new-card"
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              <div className="create-icon-badge">
+                <Plus size={32} />
+              </div>
+              <span className="create-card-text">Create new board</span>
+            </div>
+
+            {/* EXISTING BOARDS CARDS */}
+            {isLoadingBoards ? (
+              <div className="notebook-state-msg">Loading boards from database...</div>
+            ) : filteredBoards.length === 0 ? (
+              searchQuery ? (
+                <div className="notebook-state-msg">No boards found matching "{searchQuery}"</div>
+              ) : null
+            ) : (
+              filteredBoards.map((b, idx) => {
+                const IconComp = getCardIcon(idx);
+                const isMenuOpen = activeMenuBoardId === b.boardId;
+                const pageCount = (b.pages && b.pages.length) || 1;
+
+                return (
+                  <div
+                    key={b.boardId}
+                    className="notebook-card board-item-card"
+                    onClick={() => handleOpenExistingBoard(b.boardId, b.title)}
+                  >
+                    <div className="card-header-row">
+                      <div className="card-avatar" style={{ backgroundColor: getCardBgColor(idx) }}>
+                        <IconComp size={22} color="#ffffff" />
+                      </div>
+
+                      <div className="card-menu-container" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className={`card-menu-trigger ${isMenuOpen ? "active" : ""}`}
+                          onClick={() => setActiveMenuBoardId(isMenuOpen ? null : b.boardId)}
+                          aria-label="Board options"
+                        >
+                          <MoreVertical size={18} />
+                        </button>
+
+                        {isMenuOpen && (
+                          <div className="card-dropdown">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuBoardId(null);
+                                handleOpenExistingBoard(b.boardId, b.title);
+                              }}
+                            >
+                              <Play size={14} />
+                              <span>Open board</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStartRename(b)}
+                            >
+                              <Edit2 size={14} />
+                              <span>Rename board</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuBoardId(null);
+                                navigator.clipboard?.writeText(b.boardId);
+                                setToast("Board ID copied!");
+                              }}
+                            >
+                              <Copy size={14} />
+                              <span>Copy ID</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="card-info">
+                      <h3 className="card-board-title">{b.title || "Untitled board"}</h3>
+                      <div className="card-board-meta">
+                        <span>{formatDate(b.createdAt)}</span>
+                        <span className="meta-sep">•</span>
+                        <span>{pageCount} {pageCount === 1 ? "page" : "pages"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </main>
+
+        {/* MODAL FOR CREATING NEW BOARD */}
+        {isCreateModalOpen && (
+          <div className="notebook-modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+            <div className="notebook-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="notebook-modal-head">
+                <h3>Create new board</h3>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setIsCreateModalOpen(false)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={handleModalCreateSubmit}>
+                <div className="notebook-modal-body">
+                  <label htmlFor="modal-board-title">Board Title</label>
+                  <input
+                    id="modal-board-title"
+                    type="text"
+                    autoFocus
+                    placeholder="Enter board title (e.g. System Design, Whiteboard notes...)"
+                    value={createTitle}
+                    onChange={(e) => setCreateTitle(e.target.value)}
+                  />
+                </div>
+                <div className="notebook-modal-foot">
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={() => setIsCreateModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-submit"
+                    disabled={boardApi.isCreatingBoard}
+                  >
+                    {boardApi.isCreatingBoard ? "Creating..." : "Create and Open"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL FOR RENAMING EXISTING BOARD */}
+        {renameBoardData && (
+          <div className="notebook-modal-overlay" onClick={() => setRenameBoardData(null)}>
+            <div className="notebook-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="notebook-modal-head">
+                <h3>Rename board</h3>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setRenameBoardData(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={handleRenameSubmit}>
+                <div className="notebook-modal-body">
+                  <label htmlFor="modal-rename-title">New Board Title</label>
+                  <input
+                    id="modal-rename-title"
+                    type="text"
+                    autoFocus
+                    placeholder="Enter new board title..."
+                    value={renameTitleInput}
+                    onChange={(e) => setRenameTitleInput(e.target.value)}
+                  />
+                </div>
+                <div className="notebook-modal-foot">
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={() => setRenameBoardData(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-submit"
+                    disabled={boardApi.isRenamingBoard}
+                  >
+                    {boardApi.isRenamingBoard ? "Saving..." : "Save Title"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {toast && (
           <div className="toast">

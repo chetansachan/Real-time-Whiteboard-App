@@ -1,7 +1,17 @@
 import { useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addBoardPage, createBoard, getBoard, updateBoardTitle } from "../services/boardApi.js";
+import { addBoardPage, createBoard, getBoard, getBoards, updateBoardTitle } from "../services/boardApi.js";
 import { mergeRemoteBoardMetadata } from "../utils/whiteboard.js";
+
+export function useBoardsList({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: ["allBoards"],
+    queryFn: getBoards,
+    enabled,
+    retry: 1,
+    refetchOnWindowFocus: false
+  });
+}
 
 export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
   const queryClient = useQueryClient();
@@ -19,6 +29,7 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     onSuccess: (remoteBoard) => {
       setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
       queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
+      queryClient.invalidateQueries({ queryKey: ["allBoards"] });
     }
   });
 
@@ -80,6 +91,11 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     [loadBoardMutation]
   );
 
+  const renameBoardTitle = useCallback(
+    async (boardId, title) => updateTitleMutation.mutateAsync({ boardId, title }),
+    [updateTitleMutation]
+  );
+
   const addPage = useCallback(
     async (name) => {
       if (!board.boardId) {
@@ -108,9 +124,11 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     isAddingPage: addPageMutation.isPending,
     isCreatingBoard: createBoardMutation.isPending,
     isLoadingBoard: loadBoardMutation.isPending,
+    isRenamingBoard: updateTitleMutation.isPending,
     isSavingTitle: updateTitleMutation.isPending,
     loadBoard,
     refetchBoard: boardQuery.refetch,
+    renameBoardTitle,
     saveTitle,
     status
   };

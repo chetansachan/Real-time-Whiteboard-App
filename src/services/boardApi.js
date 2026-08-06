@@ -25,6 +25,10 @@ export function createBoard(title) {
   });
 }
 
+export function getBoards() {
+  return request("/api/boards");
+}
+
 export function getBoard(boardId) {
   return request(`/api/boards/${boardId}`);
 }
