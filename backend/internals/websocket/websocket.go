@@ -73,4 +73,5 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Conn:    conn,
 		Send:    make(chan []byte, 256),
 	}
+	hub.Register <- client
 }
