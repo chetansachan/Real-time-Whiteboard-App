@@ -260,7 +260,6 @@ Every WebSocket event should use this outer shape.
 type EventEnvelope struct {
     ID        string          `json:"id"`
     Type      string          `json:"type"`
-    RoomID    string          `json:"roomId"`
     BoardID   string          `json:"boardId"`
     PageID    string          `json:"pageId,omitempty"`
     ClientID  string          `json:"clientId"`
@@ -277,18 +276,16 @@ Because every event needs shared metadata:
 
 - who sent it
 - which board it belongs to
-- which room it belongs to
 - when it happened
 - what order it happened in
 - what type of action happened
 
 ### Hub
 
-A hub manages all live WebSocket clients for one room and board.
+A hub manages all live WebSocket clients for one board.
 
 ```go
 type Hub struct {
-    RoomID     string
     BoardID    string
     Clients    map[*Client]bool
     Register   chan *Client
@@ -310,13 +307,12 @@ A client is one browser tab connected by WebSocket.
 
 ```go
 type Client struct {
-    ID     string
-    UserID string
-    RoomID string
+    ID      string
+    UserID  string
     BoardID string
-    Hub    *Hub
-    Conn   *websocket.Conn
-    Send   chan EventEnvelope
+    Hub     *Hub
+    Conn    *websocket.Conn
+    Send    chan EventEnvelope
 }
 ```
 
@@ -324,7 +320,7 @@ Meaning:
 
 - `Conn`: the actual WebSocket connection
 - `Send`: events waiting to be sent to this browser
-- `Hub`: the room manager this client belongs to
+- `Hub`: the board manager this client belongs to
 
 ## HTTP Endpoints
 
