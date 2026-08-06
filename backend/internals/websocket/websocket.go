@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"net/http"
 	"sync"
 
 	"github.com/google/uuid"
@@ -26,9 +27,17 @@ type Client struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		BoardID: uuid.New(),
-		Clients: make(map[*Client]bool),
-		Register: make(chan *Client),
+		BoardID:    uuid.New(),
+		Clients:    make(map[*Client]bool),
+		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 	}
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
