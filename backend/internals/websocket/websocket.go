@@ -55,6 +55,14 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			delete(h.Clients, client)
 			h.mu.Unlock()
+
+		case message := <-h.Inbound:
+			for client := range h.Clients {
+				h.mu.RLock()
+				client.Send <- message
+				h.mu.RUnlock()
+		}
+			
 		}
 	}
 }
