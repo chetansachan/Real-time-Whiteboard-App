@@ -58,7 +58,7 @@ func (c *Client) readPump(h *Hub) {
 			}
 			break
 		}
-		c.Send <- message
+		h.Inbound <- message
 	}
 }
 
@@ -85,11 +85,11 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case message := <-h.Inbound:
+			h.mu.RLock()
 			for client := range h.Clients {
-				h.mu.RLock()
 				client.Send <- message
-				h.mu.RUnlock()
 			}
+			h.mu.RUnlock()
 
 		}
 	}
