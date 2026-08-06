@@ -19,3 +19,6 @@ type Board struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
+type Boards struct {
+	Boards []Board `json:"boards"`
+}

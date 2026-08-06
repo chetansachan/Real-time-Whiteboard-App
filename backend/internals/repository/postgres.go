@@ -128,3 +128,5 @@ func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name st
 	return page, nil
 }
 
+func()
+
