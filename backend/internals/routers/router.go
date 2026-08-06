@@ -22,6 +22,7 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoardByIDController)
 	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
 	mux.HandleFunc("GET /api", boardController.GetAllBoardsContoller)
+	mux.HandleFunc("DELETE /api/boards/{id}", boardController.DeleteBoardByIdController)
 	return withCORS(mux)
 }
 
