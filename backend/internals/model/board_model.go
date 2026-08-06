@@ -1,6 +1,7 @@
 package model
 
 import (
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ type Hub struct {
 	Clients    map[*Client]bool
 	Register   chan *Client
 	Unregister chan *Client
+	mu         sync.RWMutex
 }
 
 type Client struct {
