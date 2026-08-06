@@ -23,3 +23,21 @@ type Board struct {
 type Boards struct {
 	Boards []Board `json:"boards"`
 }
+
+type Hub struct {
+	RoomID     string
+	BoardID    string
+	Clients    map[*Client]bool
+	Register   chan *Client
+	Unregister chan *Client
+}
+
+type Client struct {
+	ID      string
+	UserID  string
+	RoomID  string
+	BoardID string
+	Hub     *Hub
+	Conn    *websocket.Conn
+	Send    chan []byte
+}
