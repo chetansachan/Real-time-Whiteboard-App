@@ -21,7 +21,7 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)
 	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoardByIDController)
 	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
-	mux.HandleFunc("GET /api", boardController.GetAllBoardsContoller)
+	mux.HandleFunc("GET /api/boards", boardController.GetAllBoardsContoller)
 	mux.HandleFunc("DELETE /api/boards/{id}", boardController.DeleteBoardByIdController)
 	return withCORS(mux)
 }
@@ -29,7 +29,7 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == http.MethodOptions {
