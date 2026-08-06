@@ -42,6 +42,22 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+func (h *Hub) Run() {
+	for {
+		select{
+		case client := <-h.Register:
+			h.mu.Lock()
+			h.Clients[client] = true
+			h.mu.Unlock()
+		
+		case client := <-h.Unregister:
+			h.mu.Lock()
+			delete(h.Clients, client)
+			h.mu.Unlock()
+		}
+	}
+}
+
 func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
