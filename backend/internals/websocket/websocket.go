@@ -42,10 +42,19 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request){
-	conn, err := upgrader.Upgrade(w,r,nil)
+func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, "Error upgrading connection to websocket", http.StatusBadRequest)
 		return
+	}
+
+	client := &Client{
+		ID:      uuid.New(),
+		UserID:  uuid.New(),
+		BoardID: hub.BoardID,
+		Hub:     hub,
+		Conn:    conn,
+		Send:    make(chan []byte, 256),
 	}
 }
