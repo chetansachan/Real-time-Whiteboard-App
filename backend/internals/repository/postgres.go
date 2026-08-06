@@ -152,3 +152,16 @@ func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error
 	}
 	return result, nil
 }
+
+func (r *BoardRepository) DeleteBoardById(ctx context.Context, id uuid.UUID) error {
+	query := `
+		DELETE FROM boards WHERE board_id = $1
+	`
+
+	_, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete board: %w", err)
+	}
+
+	return nil
+}
