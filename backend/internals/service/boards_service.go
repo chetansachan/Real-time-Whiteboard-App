@@ -100,8 +100,7 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 	return res, nil
 }
 
-
-func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStr string, newtitle string) (GetBoardByIDRespone,error) {
+func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStr string, newtitle string) (GetBoardByIDRespone, error) {
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		return GetBoardByIDRespone{}, ErrBoardNotFound
@@ -155,4 +154,15 @@ func (s *BoardService) AddPageByIDService(ctx context.Context, idStr string, pag
 	}
 
 	return res, nil
+}
+
+func (s *BoardService) GetAllBoardsService(ctx context.Context) (model.Boards, error) {
+	boards, err := s.repo.GetAllBoards(ctx)
+	if err != nil {
+		if errors.Is(err, repository.ErrBoardNotFound) {
+			return model.Boards{}, ErrBoardNotFound
+		}
+		return model.Boards{}, fmt.Errorf("failed to get boards from database: %w", err)
+	}
+	return boards, nil
 }
