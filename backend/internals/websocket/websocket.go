@@ -23,3 +23,12 @@ type Client struct {
 	Conn    *websocket.Conn
 	Send    chan []byte
 }
+
+func NewHub() *Hub {
+	return &Hub{
+		BoardID: uuid.New(),
+		Clients: make(map[*Client]bool),
+		Register: make(chan *Client),
+		Unregister: make(chan *Client),
+	}
+}
