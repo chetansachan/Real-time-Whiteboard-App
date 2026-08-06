@@ -1,7 +1,6 @@
 package model
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,14 +22,6 @@ type Board struct {
 
 type Boards struct {
 	Boards []Board `json:"boards"`
-}
-
-type Hub struct {
-	BoardID    uuid.UUID
-	Clients    map[*Client]bool
-	Register   chan *Client
-	Unregister chan *Client
-	mu         sync.RWMutex
 }
 
 type Client struct {
