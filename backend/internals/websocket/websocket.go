@@ -13,6 +13,7 @@ type Hub struct {
 	Clients    map[*Client]bool
 	Register   chan *Client
 	Unregister chan *Client
+	Inbound    chan []byte
 	mu         sync.RWMutex
 }
 
@@ -44,12 +45,12 @@ var upgrader = websocket.Upgrader{
 
 func (h *Hub) Run() {
 	for {
-		select{
+		select {
 		case client := <-h.Register:
 			h.mu.Lock()
 			h.Clients[client] = true
 			h.mu.Unlock()
-		
+
 		case client := <-h.Unregister:
 			h.mu.Lock()
 			delete(h.Clients, client)
