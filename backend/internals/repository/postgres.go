@@ -132,7 +132,7 @@ func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error
 	var result model.Boards
 	result.Boards = []model.Board{}
 
-	queryBoards := `SELECT board_id, title, created_at, updated_at FROM boards`
+	queryBoards := `SELECT * FROM boards ORDER BY created_at DESC`
 	rows, err := r.pool.Query(ctx, queryBoards)
 	if err != nil {
 		return model.Boards{}, fmt.Errorf("failed to get boards from database: %w", err)
