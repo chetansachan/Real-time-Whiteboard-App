@@ -1,6 +1,13 @@
 # Real-Time Whiteboard Backend API
 
-This project currently contains only the React frontend. Do not add backend code here yet. This document explains what a future Go backend should do and how the frontend should talk to it.
+This is the design + implementation reference for the Go backend of the Real-Time Whiteboard project. The frontend is React (Vite, port 5173); the backend is Go with a layered structure — `cmd/main.go` boots config, `pgxpool`, and the WebSocket layer, and `internals/{config,database,repository,model,service,controllers,routers,websocket}` holds the rest.
+
+This document mixes design intent with the parts that are already built:
+
+- **Built today**: board REST routes under `/api/boards` (PostgreSQL via `pgxpool`) and the WebSocket relay under `internals/websocket/` that accepts connections at `/ws`.
+- **Design intent** (not all built yet): the `EventEnvelope` shape, the rich `Hub`/`Client` with `RoomID`/`BoardID`/`Inbound`, the full event-type catalogue (`draw.stroke.added`, `presence.cursor`, etc.), persistence, history replay, and auth.
+
+The WebSocket-specific sections below call out which parts are built and which are still design. The design parts describe what we are working toward; do not change them.
 
 The most important idea is simple:
 
@@ -62,14 +69,13 @@ Page 2
 
 ### Room
 
-A room is where live collaboration happens. Users must join a room before they can chat or share live presence.
+A room is the live collaboration session attached 1-to-1 to a board. When a user opens or joins a board using `boardId`, they join its live room where real-time drawing events, presence, and chat are broadcasted.
 
 Example:
 
 ```text
-Room: "design-room"
-Users: Chetan, Mariya
-Board: brd_123
+Board & Room ID: "brd_123"
+Users: Chetan, Mariya, Bob
 ```
 
 ### Element
@@ -461,15 +467,14 @@ Backend should:
 2. Find all events for this board with cursor greater than `after`.
 3. Return those events in order.
 
-### `POST /api/rooms/{roomId}/join`
+### `POST /api/boards/{boardId}/join`
 
-Use this when the user clicks the join room card in the frontend.
+Use this when the user inputs a `boardId` and clicks "Join Board" in the frontend.
 
 Request:
 
 ```json
 {
-  "boardId": "brd_123",
   "userName": "Chetan"
 }
 ```
@@ -477,16 +482,15 @@ Request:
 Backend should:
 
 1. Check the board exists.
-2. Create or find the room.
+2. Find or initialize the live room for this board.
 3. Create a user session.
-4. Add the user to the room participant list.
+4. Add the user to the board participant list.
 5. Return participant data.
 
 Response:
 
 ```json
 {
-  "roomId": "story-room",
   "boardId": "brd_123",
   "userId": "usr_1",
   "participants": [
@@ -501,50 +505,72 @@ Response:
 
 Important:
 
-Chat should be rejected unless the user has joined the room.
+Chat and drawing events should be rejected unless the user has joined the board session.
 
-### `POST /api/rooms/{roomId}/leave`
+### `POST /api/boards/{boardId}/leave`
 
-Use this when the user clicks Leave.
+Use this when the user clicks Leave Board.
 
 Request:
 
 ```json
-{
-  "boardId": "brd_123"
-}
+{}
 ```
 
 Backend should:
 
-1. Remove the user from the room.
+1. Remove the user from the board session.
 2. Close their WebSocket or mark them inactive.
-3. Broadcast `presence.left` to other users.
-4. Stop accepting chat messages from that user for this room.
+3. Broadcast `presence.left` to other users on the board.
+4. Stop accepting chat messages from that user for this board.
 
 ## WebSocket Endpoint
 
 Use WebSocket for live events.
 
 ```text
-GET /ws/rooms/{roomId}/boards/{boardId}?token={jwt}&cursor={lastSeenCursor}
+GET /ws/boards/{boardId}?token={jwt}&cursor={lastSeenCursor}
 ```
 
 Example:
 
 ```text
-ws://localhost:8080/ws/rooms/story-room/boards/brd_123?cursor=184
+ws://localhost:8080/ws/boards/brd_123?cursor=184
 ```
 
 When a browser connects:
 
 1. Backend upgrades HTTP to WebSocket.
-2. Backend checks the user is allowed in the room.
+2. Backend checks the user is allowed in the board room.
 3. Backend creates a `Client`.
-4. Backend registers the client with the room `Hub`.
+4. Backend registers the client with the board `Hub`.
 5. Backend sends missed events after `cursor`.
 6. Backend starts reading new messages from the browser.
 7. Backend starts writing broadcast events to the browser.
+
+### Currently Implemented
+
+The minimal viable relay is the only part of this design that is built today. It lives in `internals/websocket/` and is mounted on a flat URL — the room is not in the path, the room is sent inside the message body.
+
+```text
+GET /ws
+```
+
+Example:
+
+```text
+ws://localhost:8080/ws
+```
+
+When a browser connects today:
+
+1. Backend upgrades HTTP to WebSocket (any origin is accepted — `CheckOrigin` returns `true`; tighten this for production).
+2. Backend creates a `Client` with a server-generated UUID and a 256-buffered `send` channel.
+3. Backend registers the client with the global `Hub` via the `register` channel.
+4. Backend starts the client's `readPump` and `writePump` goroutines.
+5. The frontend then sends a `join` message (see WebSocket Envelope below) to put itself into a room. There is no separate HTTP join step yet.
+
+The path, the query params (`token`, `cursor`), the room/board scoping in the URL, and the missed-event replay on connect are all design intent and not yet wired up.
 
 ## WebSocket Envelope
 
@@ -554,7 +580,6 @@ Every WebSocket message should have the same outer structure.
 {
   "id": "evt_123",
   "type": "draw.stroke.added",
-  "roomId": "story-room",
   "boardId": "brd_123",
   "pageId": "page-1",
   "clientId": "client_abc",
@@ -571,7 +596,6 @@ The frontend can send:
 {
   "id": "local_evt_1",
   "type": "chat.message",
-  "roomId": "story-room",
   "boardId": "brd_123",
   "clientId": "client_abc",
   "payload": {
@@ -588,7 +612,200 @@ The server should add or replace:
 
 Never trust the browser for these server-owned fields.
 
+### Currently Implemented
+
+The actual envelope is much smaller than the design intent. Today there is no `id`, no `userId`, no `cursor`, no `createdAt`, no `payload`. Everything the client wants to send rides inside `content` as opaque JSON, and the server only inspects `type` and `room`.
+
+```go
+// internals/websocket/message.go
+type Message struct {
+    Type    string          `json:"type"`
+    Room    string          `json:"room,omitempty"`
+    Content json.RawMessage `json:"content,omitempty"`
+}
+```
+
+Client to server:
+
+```json
+{
+  "type": "join",
+  "room": "design-room"
+}
+```
+
+```json
+{
+  "type": "message",
+  "room": "design-room",
+  "content": {
+    "shape": "line",
+    "x1": 10, "y1": 20, "x2": 100, "y2": 200
+  }
+}
+```
+
+Server to client (reply to the same client only):
+
+```json
+{ "type": "joined", "room": "design-room" }
+```
+
+```json
+{ "type": "left",   "room": "design-room" }
+```
+
+```json
+{
+  "type": "error",
+  "room": "design-room",
+  "content": "you are not a member of this room"
+}
+```
+
+Server to client (forwarded from another member):
+
+```json
+{
+  "type": "message",
+  "room": "design-room",
+  "content": { "shape": "line", "x1": 10, "y1": 20, "x2": 100, "y2": 200 }
+}
+```
+
+The `EventEnvelope` described earlier in the Data Model section is the long-term target. The `Message` struct above is the minimum viable shape that the relay can already route today.
+
+## Current WebSocket Implementation
+
+This section is the source of truth for what the WebSocket layer actually does today. Everything in here must match the code in `backend/internals/websocket/`. The design sections above describe where this is heading; this section describes where it is.
+
+### File Layout
+
+```text
+backend/internals/websocket/
+  message.go    // Message struct (Type / Room / Content)
+  room.go       // Room + RoomManager + GetorCreateRoom / JoinRoom / LeaveRoom / IsMember / Broadcast
+  client.go     // Client + HandleMessage + readPump + writePump
+  hub.go        // Hub + NewHub + Run (single goroutine that owns hub.clients)
+  handler.go    // package-level upgrader + ServeWs
+```
+
+Wired up in two places outside the package:
+
+- `cmd/main.go` — creates the single `Hub` and single `RoomManager`, starts `go hub.Run()`, and passes both into `routers.SetupRouter`.
+- `internals/routers/router.go` — `SetupRouter(pool, hub, rm)` registers `mux.HandleFunc("/ws", ...)` and wraps the mux in the existing `withCORS` middleware so the React dev server's OPTIONS preflight works.
+
+### Actual Structs (vs Design)
+
+The `EventEnvelope`, the design `Hub`, and the design `Client` are described in the Data Model section above. The structs that exist in code today are smaller — they have no `UserID`, no `RoomID`, no `BoardID`, no `Inbound`, no `Payload`. The room lives in the message envelope, not on the connection.
+
+```go
+// internals/websocket/hub.go
+type Hub struct {
+    clients    map[*Client]bool
+    register   chan *Client
+    unregister chan *Client
+}
+
+// internals/websocket/room.go
+type Room struct {
+    roomname string
+    clients  map[string]*Client
+    mu       sync.RWMutex
+}
+
+type RoomManager struct {
+    rooms map[string]*Room
+    mu    sync.RWMutex
+}
+
+// internals/websocket/client.go
+type Client struct {
+    id   uuid.UUID
+    conn *websocket.Conn
+    send chan []byte
+}
+```
+
+The room is keyed by name string; the client is keyed inside a room by its UUID. The hub only tracks "is this client connected at all" — it does not know which room the client is in.
+
+### Message Types Actually Supported
+
+Only three client-to-server types and four server-to-client types are wired up today. The richer catalogue below in the `## Event Types` section is design intent.
+
+Client → server:
+
+| `type`    | What it does                                                                   |
+| --------- | ------------------------------------------------------------------------------ |
+| `join`    | Adds this client to `room` (creates the room if it does not exist).            |
+| `leave`   | Removes this client from `room` (deletes the room if it becomes empty).        |
+| `message` | Forwards `content` as raw bytes to every other member of `room`.               |
+
+Server → client:
+
+| `type`    | When it is sent                                                |
+| --------- | -------------------------------------------------------------- |
+| `joined`  | Reply to your own `join`.                                      |
+| `left`    | Reply to your own `leave`.                                     |
+| `error`   | You tried to `message` a room you had not joined.              |
+| `message` | A `message` from another member of the room (raw passthrough). |
+
+The sender never receives its own `message` back. The relay is the only responsibility the server takes on — it does not inspect, validate, persist, or rewrite `content`.
+
+### How A Connection Works (Actual Flow)
+
+```text
+1. Browser opens  ws://localhost:8080/ws
+2. router hands the request to websocket.ServeWs.
+3. ServeWs upgrades HTTP to WebSocket using the package-level upgrader.
+4. ServeWs generates a uuid, builds a Client with a buffered send channel,
+   and pushes it onto hub.register.
+5. Hub.Run goroutine adds the client to hub.clients and logs "Client Connected".
+6. ServeWs starts two goroutines for this client:
+     readPump  — keeps reading frames from the browser
+     writePump — keeps writing frames from client.send to the browser
+7. Client sends  { type: "join", room: "design-room" }.
+8. readPump calls HandleMessage, which calls RoomManager.JoinRoom.
+9. JoinRoom creates the room if needed and stores the client in room.clients.
+10. Server replies to the client with  { type: "joined", room: "design-room" }.
+11. Another client in the same room sends  { type: "message", room: "design-room", content: {...} }.
+12. HandleMessage checks IsMember, then calls RoomManager.Broadcast.
+13. Broadcast iterates the room and pushes the raw message bytes into every
+    other client's send channel (skipping the sender) using a non-blocking select.
+14. writePump on each receiving client writes the bytes to its WebSocket.
+15. The sending client does NOT receive its own message back.
+16. When the browser tab closes, readPump exits and pushes the client onto hub.unregister.
+17. Hub goroutine removes the client from hub.clients and closes client.send.
+18. writePump exits when its channel is closed, and the connection is fully torn down.
+```
+
+### Concurrency Notes
+
+- `RoomManager.mu` protects the global `rooms` map.
+- `Room.mu` protects a single room's `clients` map.
+- `Hub.clients` is only ever touched from the `Hub.Run` goroutine, so it needs no mutex.
+- `Broadcast` takes a read lock on the room and uses a non-blocking `select` send into each client's channel. If a client's buffer is full, the message is dropped for that client and a warning is logged. This is intentional — it keeps one slow client from blocking the whole room.
+
+### Quick Test
+
+Open two browser tabs and paste this in both consoles. The second tab's `hello` should appear in the first tab.
+
+```js
+const ws = new WebSocket("ws://localhost:8080/ws");
+ws.onmessage = (e) => console.log("recv:", JSON.parse(e.data));
+ws.onopen = () => ws.send(JSON.stringify({ type: "join", room: "demo" }));
+setTimeout(() => {
+  ws.send(JSON.stringify({
+    type: "message",
+    room: "demo",
+    content: { hello: "world" }
+  }));
+}, 500);
+```
+
 ## Event Types
+
+The event types in this section are the design intent for the long-term system. Today, only the three types listed in the [Current WebSocket Implementation](#current-websocket-implementation) section above are wired up. Treat this section as the spec for the event catalogue, not as something the server already understands.
 
 ### `presence.joined`
 
@@ -1036,6 +1253,14 @@ const ws = new WebSocket(
 );
 ```
 
+As built today, the path is flat — there is no room or board in the URL and no `cursor` query param. The actual call is:
+
+```js
+const ws = new WebSocket("ws://localhost:8080/ws");
+```
+
+The room is then chosen by sending a `join` message once the socket is open. See the [Current WebSocket Implementation](#current-websocket-implementation) section above for the full protocol.
+
 ### Step 4: Send Drawing Events
 
 When the user draws:
@@ -1094,6 +1319,20 @@ Then:
 ## What To Build First
 
 If you are learning Go, build this in small checkpoints.
+
+Status as of today:
+
+| Checkpoint | Topic                                | Status     |
+| ---------- | ------------------------------------ | ---------- |
+| 1          | `/health` HTTP server                | Skipped (started with the boards stack instead) |
+| 2          | `POST/GET /api/boards`               | Done — PostgreSQL via `pgxpool` |
+| 3          | `POST /api/rooms/{id}/{join,leave}`  | Not done   |
+| 4          | WebSocket connection                 | Done — `/ws` lives in `internals/websocket/handler.go` |
+| 5          | `Hub` + room broadcast               | Done — `hub.go` + `room.go` |
+| 6          | Event validation                     | Not done (relay is a passthrough today) |
+| 7          | Cursors + persistence                | Not done   |
+| 8          | Replay missed events                 | Not done   |
+| 9          | Replace in-memory with a database    | Not done (events are not stored at all yet) |
 
 ### Checkpoint 1
 
