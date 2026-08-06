@@ -128,5 +128,14 @@ func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name st
 	return page, nil
 }
 
-func()
-
+func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error) {
+	var b model.Boards
+	query := `
+		SELETE * FROM boards
+	`
+	_, err := r.pool.Exec(ctx, query, b)
+	if err != nil {
+		return model.Boards{}, fmt.Errorf("failed to get boards from database: %w", err)
+	}
+	return b, nil
+}
