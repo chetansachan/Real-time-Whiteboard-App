@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addBoardPage, createBoard, getBoard, getBoards, updateBoardTitle } from "../services/boardApi.js";
+import { addBoardPage, createBoard, deleteBoard as deleteBoardApi, getBoard, getBoards, updateBoardTitle } from "../services/boardApi.js";
 import { mergeRemoteBoardMetadata } from "../utils/whiteboard.js";
 
 export function useBoardsList({ enabled = true } = {}) {
@@ -40,7 +40,7 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
       queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
     },
     onError: () => {
-      setToast("Could not load board");
+      setToast?.("Could not load board");
     }
   });
 
@@ -49,10 +49,11 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     onSuccess: (remoteBoard) => {
       setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
       queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
-      setToast("Board title saved");
+      queryClient.invalidateQueries({ queryKey: ["allBoards"] });
+      setToast?.("Board title saved");
     },
     onError: () => {
-      setToast("Could not save title");
+      setToast?.("Could not save title");
     }
   });
 
@@ -61,10 +62,23 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     onSuccess: (remoteBoard) => {
       setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
       queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
-      setToast("Page saved to backend");
+      queryClient.invalidateQueries({ queryKey: ["allBoards"] });
+      setToast?.("Page saved to backend");
     },
     onError: () => {
-      setToast("Backend unavailable, added local page");
+      setToast?.("Backend unavailable, added local page");
+    }
+  });
+
+  const deleteBoardMutation = useMutation({
+    mutationFn: (boardId) => deleteBoardApi(boardId),
+    onSuccess: (_, boardId) => {
+      queryClient.invalidateQueries({ queryKey: ["allBoards"] });
+      queryClient.removeQueries({ queryKey: ["board", boardId] });
+      setToast?.("Board deleted");
+    },
+    onError: () => {
+      setToast?.("Could not delete board");
     }
   });
 
@@ -75,7 +89,7 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
 
   const saveTitle = useCallback(() => {
     if (!board.boardId) {
-      setToast("Create or load a board first");
+      setToast?.("Create or load a board first");
       return;
     }
     updateTitleMutation.mutate({ boardId: board.boardId, title: board.title });
@@ -106,23 +120,31 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
     [addPageMutation, board.boardId]
   );
 
-  const isSaving = createBoardMutation.isPending || loadBoardMutation.isPending || updateTitleMutation.isPending || addPageMutation.isPending;
-  const isOffline = createBoardMutation.isError || loadBoardMutation.isError || updateTitleMutation.isError || addPageMutation.isError || boardQuery.isError;
+  const deleteBoard = useCallback(
+    async (boardId) => deleteBoardMutation.mutateAsync(boardId),
+    [deleteBoardMutation]
+  );
+
+  const isSaving = createBoardMutation.isPending || loadBoardMutation.isPending || updateTitleMutation.isPending || addPageMutation.isPending || deleteBoardMutation.isPending;
+  const isOffline = createBoardMutation.isError || loadBoardMutation.isError || updateTitleMutation.isError || addPageMutation.isError || boardQuery.isError || deleteBoardMutation.isError;
   const status = isSaving ? "saving" : isOffline ? "offline" : board.boardId ? "connected" : "connecting";
   const error =
     createBoardMutation.error?.message ||
     loadBoardMutation.error?.message ||
     updateTitleMutation.error?.message ||
     addPageMutation.error?.message ||
+    deleteBoardMutation.error?.message ||
     boardQuery.error?.message ||
     "";
 
   return {
     addPage,
     createNewBoard,
+    deleteBoard,
     error,
     isAddingPage: addPageMutation.isPending,
     isCreatingBoard: createBoardMutation.isPending,
+    isDeletingBoard: deleteBoardMutation.isPending,
     isLoadingBoard: loadBoardMutation.isPending,
     isRenamingBoard: updateTitleMutation.isPending,
     isSavingTitle: updateTitleMutation.isPending,

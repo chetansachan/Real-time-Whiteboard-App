@@ -303,6 +303,17 @@ export default function App() {
     }
   };
 
+  const handleDeleteBoard = async (b) => {
+    setActiveMenuBoardId(null);
+    if (window.confirm(`Are you sure you want to delete "${b.title || "Untitled board"}"?`)) {
+      try {
+        await boardApi.deleteBoard(b.boardId);
+      } catch {
+        setToast("Could not delete board");
+      }
+    }
+  };
+
   const saveTitleToBackend = async () => {
     boardApi.saveTitle();
   };
@@ -855,6 +866,14 @@ export default function App() {
                             >
                               <Copy size={14} />
                               <span>Copy ID</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="delete-item"
+                              onClick={() => handleDeleteBoard(b)}
+                            >
+                              <Trash2 size={14} color="#ef4444" />
+                              <span style={{ color: "#ef4444" }}>Delete board</span>
                             </button>
                           </div>
                         )}

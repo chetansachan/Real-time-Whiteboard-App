@@ -15,7 +15,8 @@ async function request(path, options = {}) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }
 
 export function createBoard(title) {
@@ -44,6 +45,12 @@ export function addBoardPage(boardId, name) {
   return request(`/api/boards/${boardId}/pages`, {
     method: "POST",
     body: JSON.stringify({ name })
+  });
+}
+
+export function deleteBoard(boardId) {
+  return request(`/api/boards/${boardId}`, {
+    method: "DELETE"
   });
 }
 
