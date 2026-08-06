@@ -25,16 +25,16 @@ type Boards struct {
 }
 
 type Hub struct {
-	BoardID    string
+	BoardID    uuid.UUID
 	Clients    map[*Client]bool
 	Register   chan *Client
 	Unregister chan *Client
 }
 
 type Client struct {
-	ID      string
-	UserID  string
-	BoardID string
+	ID      uuid.UUID
+	UserID  uuid.UUID
+	BoardID uuid.UUID
 	Hub     *Hub
 	Conn    *websocket.Conn
 	Send    chan []byte

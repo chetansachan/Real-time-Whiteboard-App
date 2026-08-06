@@ -19,6 +19,5 @@ func ServerWS(w http.ResponseWriter, r *http.Request){
 	conn, err := upgrader.Upgrade(w,r,nil)
 	if err != nil {
 		http.Error(w, "Error upgrading connection to websocket", http.StatusBadRequest)
-		return
 	}
 }
