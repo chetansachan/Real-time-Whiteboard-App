@@ -25,7 +25,6 @@ type Boards struct {
 }
 
 type Hub struct {
-	RoomID     string
 	BoardID    string
 	Clients    map[*Client]bool
 	Register   chan *Client
@@ -35,7 +34,6 @@ type Hub struct {
 type Client struct {
 	ID      string
 	UserID  string
-	RoomID  string
 	BoardID string
 	Hub     *Hub
 	Conn    *websocket.Conn
