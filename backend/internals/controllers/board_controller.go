@@ -139,3 +139,23 @@ func (c *BoardController) AddPageByIDController(w http.ResponseWriter, r *http.R
 		return
 	}
 }
+
+func (c *BoardController) GetAllBoardsContoller(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	boards, err := c.boardService.GetAllBoardsService(r.Context())
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(boards); err != nil {
+		http.Error(w, "Error Encoding data", http.StatusInternalServerError)
+		return
+	}
+}
