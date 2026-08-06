@@ -3,6 +3,7 @@ import { DEFAULT_ROOM } from "../constants/whiteboard.js";
 const template = true;
 
 export const initialBoard = {
+  boardId: null,
   title: "Unnamed Board",
   activePageId: "page-1",
   hasUserContent: false,

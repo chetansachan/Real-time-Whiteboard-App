@@ -1,0 +1,117 @@
+import { useCallback, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { addBoardPage, createBoard, getBoard, updateBoardTitle } from "../services/boardApi.js";
+import { mergeRemoteBoardMetadata } from "../utils/whiteboard.js";
+
+export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
+  const queryClient = useQueryClient();
+
+  const boardQuery = useQuery({
+    queryKey: ["board", board.boardId],
+    queryFn: () => getBoard(board.boardId),
+    enabled: enabled && Boolean(board.boardId),
+    retry: 1,
+    refetchOnWindowFocus: false
+  });
+
+  const createBoardMutation = useMutation({
+    mutationFn: createBoard,
+    onSuccess: (remoteBoard) => {
+      setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
+      queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
+    }
+  });
+
+  const loadBoardMutation = useMutation({
+    mutationFn: getBoard,
+    onSuccess: (remoteBoard) => {
+      setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
+      queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
+    },
+    onError: () => {
+      setToast("Could not load board");
+    }
+  });
+
+  const updateTitleMutation = useMutation({
+    mutationFn: ({ boardId, title }) => updateBoardTitle(boardId, title),
+    onSuccess: (remoteBoard) => {
+      setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
+      queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
+      setToast("Board title saved");
+    },
+    onError: () => {
+      setToast("Could not save title");
+    }
+  });
+
+  const addPageMutation = useMutation({
+    mutationFn: ({ boardId, name }) => addBoardPage(boardId, name),
+    onSuccess: (remoteBoard) => {
+      setBoard((current) => mergeRemoteBoardMetadata(current, remoteBoard));
+      queryClient.setQueryData(["board", remoteBoard.boardId], remoteBoard);
+      setToast("Page saved to backend");
+    },
+    onError: () => {
+      setToast("Backend unavailable, added local page");
+    }
+  });
+
+  useEffect(() => {
+    if (!boardQuery.data) return;
+    setBoard((current) => mergeRemoteBoardMetadata(current, boardQuery.data));
+  }, [boardQuery.data, setBoard]);
+
+  const saveTitle = useCallback(() => {
+    if (!board.boardId) {
+      setToast("Create or load a board first");
+      return;
+    }
+    updateTitleMutation.mutate({ boardId: board.boardId, title: board.title });
+  }, [board.boardId, board.title, setToast, updateTitleMutation]);
+
+  const createNewBoard = useCallback(
+    async (title) => createBoardMutation.mutateAsync(title),
+    [createBoardMutation]
+  );
+
+  const loadBoard = useCallback(
+    async (boardId) => loadBoardMutation.mutateAsync(boardId),
+    [loadBoardMutation]
+  );
+
+  const addPage = useCallback(
+    async (name) => {
+      if (!board.boardId) {
+        throw new Error("Backend board is not connected yet");
+      }
+      return addPageMutation.mutateAsync({ boardId: board.boardId, name });
+    },
+    [addPageMutation, board.boardId]
+  );
+
+  const isSaving = createBoardMutation.isPending || loadBoardMutation.isPending || updateTitleMutation.isPending || addPageMutation.isPending;
+  const isOffline = createBoardMutation.isError || loadBoardMutation.isError || updateTitleMutation.isError || addPageMutation.isError || boardQuery.isError;
+  const status = isSaving ? "saving" : isOffline ? "offline" : board.boardId ? "connected" : "connecting";
+  const error =
+    createBoardMutation.error?.message ||
+    loadBoardMutation.error?.message ||
+    updateTitleMutation.error?.message ||
+    addPageMutation.error?.message ||
+    boardQuery.error?.message ||
+    "";
+
+  return {
+    addPage,
+    createNewBoard,
+    error,
+    isAddingPage: addPageMutation.isPending,
+    isCreatingBoard: createBoardMutation.isPending,
+    isLoadingBoard: loadBoardMutation.isPending,
+    isSavingTitle: updateTitleMutation.isPending,
+    loadBoard,
+    refetchBoard: boardQuery.refetch,
+    saveTitle,
+    status
+  };
+}

@@ -24,6 +24,37 @@ export function sanitizeBoard(board) {
   };
 }
 
+export function mergeRemoteBoardMetadata(currentBoard, remoteBoard) {
+  if (!remoteBoard?.boardId) return currentBoard;
+
+  const existingById = new Map(currentBoard.pages.map((page) => [page.id, page]));
+  const existingByName = new Map(currentBoard.pages.map((page) => [page.name, page]));
+  const firstExistingPage = currentBoard.pages[0];
+
+  const pages = (remoteBoard.pages || []).map((remotePage, index) => {
+    const id = remotePage.pageId || remotePage.id;
+    const name = remotePage.name || String(index + 1);
+    const existing = existingById.get(id) || existingByName.get(name) || (index === 0 ? firstExistingPage : null);
+
+    return {
+      id,
+      name,
+      elements: existing?.elements || []
+    };
+  });
+
+  const nextPages = pages.length ? pages : currentBoard.pages;
+  const activePageStillExists = nextPages.some((page) => page.id === currentBoard.activePageId);
+
+  return {
+    ...currentBoard,
+    boardId: remoteBoard.boardId,
+    title: remoteBoard.title || currentBoard.title,
+    pages: nextPages,
+    activePageId: activePageStillExists ? currentBoard.activePageId : nextPages[0]?.id || currentBoard.activePageId
+  };
+}
+
 export function getActivePage(board) {
   return board.pages.find((page) => page.id === board.activePageId) || board.pages[0];
 }

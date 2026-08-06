@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   Copy,
   Eye,
+  FolderOpen,
   Home,
   Info,
   LoaderCircle,
@@ -26,7 +27,9 @@ import {
   ZoomOut
 } from "lucide-react";
 import { COLORS, FILL_COLORS, TOOLS } from "./constants/whiteboard.js";
+import { useBoardApi } from "./hooks/useBoardApi.js";
 import { usePersistentBoard } from "./hooks/usePersistentBoard.js";
+import { getApiBaseUrl } from "./services/boardApi.js";
 import { renderElement, renderSelectionBox } from "./utils/canvasRenderer.js";
 import {
   addChatMessage,
@@ -43,6 +46,7 @@ import {
   isPointInElement,
   joinRoom,
   leaveRoom,
+  mergeRemoteBoardMetadata,
   moveElements,
   pickTopElementId,
   toggleSelection,
@@ -69,10 +73,14 @@ export default function App() {
   const [redoStack, setRedoStack] = useState([]);
   const [chatText, setChatText] = useState("");
   const [roomForm, setRoomForm] = useState({ roomName: board.room.name, userName: board.room.userName });
+  const [createTitle, setCreateTitle] = useState(board.title || "Unnamed Board");
+  const [loadBoardId, setLoadBoardId] = useState(board.boardId || "");
+  const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [remoteCursor, setRemoteCursor] = useState({ x: 790, y: 140 });
   const [isCallOpen, setIsCallOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const boardApi = useBoardApi({ board, enabled: isBoardOpen, setBoard, setToast });
 
   const activePage = useMemo(() => getActivePage(board), [board]);
   const elements = useMemo(() => activePage?.elements || [], [activePage]);
@@ -154,6 +162,44 @@ export default function App() {
 
   const updateTitle = (title) => {
     setBoard((current) => ({ ...current, title }));
+  };
+
+  const handleCreateBoard = async (event) => {
+    event.preventDefault();
+    try {
+      const remoteBoard = await boardApi.createNewBoard(createTitle.trim() || "Unnamed Board");
+      setLoadBoardId(remoteBoard.boardId || "");
+      setIsBoardOpen(true);
+      setToast("Board created");
+    } catch {
+      setToast("Could not create board");
+    }
+  };
+
+  const handleLoadBoard = async (event) => {
+    event.preventDefault();
+    const id = loadBoardId.trim();
+    if (!id) {
+      setToast("Enter a board ID");
+      return;
+    }
+
+    try {
+      const remoteBoard = await boardApi.loadBoard(id);
+      setLoadBoardId(remoteBoard.boardId || id);
+      setIsBoardOpen(true);
+      setToast("Board loaded");
+    } catch {
+      setToast("Could not load board");
+    }
+  };
+
+  const handleContinueBoard = () => {
+    setIsBoardOpen(true);
+  };
+
+  const saveTitleToBackend = async () => {
+    boardApi.saveTitle();
   };
 
   const addTextAt = (point) => {
@@ -419,13 +465,39 @@ export default function App() {
     commitElements(elements.map((element) => (element.id === primarySelection.id ? { ...element, text } : element)));
   };
 
-  const addPage = () => {
-    const page = { id: createId("page"), name: String(board.pages.length + 1), elements: [] };
-    setBoard((current) => ({
-      ...current,
-      activePageId: page.id,
-      pages: [...current.pages, page]
-    }));
+  const addPage = async () => {
+    const name = String(board.pages.length + 1);
+    const localPage = { id: createId("page"), name, elements: [] };
+
+    if (!board.boardId) {
+      setBoard((current) => ({
+        ...current,
+        activePageId: localPage.id,
+        pages: [...current.pages, localPage]
+      }));
+      setToast("Added local page");
+      return;
+    }
+
+    try {
+      const remoteBoard = await boardApi.addPage(name);
+      setBoard((current) => {
+        const merged = mergeRemoteBoardMetadata(current, remoteBoard);
+        const newPage = merged.pages.find((page) => page.name === name) || merged.pages.at(-1);
+        return {
+          ...merged,
+          activePageId: newPage?.id || merged.activePageId
+        };
+      });
+    } catch {
+      setBoard((current) => ({
+        ...current,
+        activePageId: localPage.id,
+        pages: [...current.pages, localPage]
+      }));
+      setToast("Backend unavailable, added local page");
+    }
+
     setUndoStack([]);
     setRedoStack([]);
     setSelectedIds([]);
@@ -518,6 +590,78 @@ export default function App() {
     return () => window.clearTimeout(handle);
   }, [toast]);
 
+  if (!isBoardOpen) {
+    return (
+      <div className="app-shell">
+        <main className="board-gate" aria-label="Board start screen">
+          <section className="board-gate-panel">
+            <div className="brand gate-brand" aria-label="Realtime whiteboard logo">
+              <span>Aw</span>
+            </div>
+            <div className="board-gate-heading">
+              <h1>Real-Time Whiteboard</h1>
+              <p>Create a backend board or load an existing board by ID.</p>
+            </div>
+
+            <div className={`api-pill gate-api ${boardApi.status}`} title={boardApi.error || getApiBaseUrl()}>
+              {boardApi.status === "offline" ? "API offline" : boardApi.status === "saving" ? "Working" : "API ready"}
+            </div>
+
+            <div className="board-gate-grid">
+              <form className="board-action-card" onSubmit={handleCreateBoard}>
+                <div className="board-action-title">
+                  <Plus size={20} />
+                  <strong>Create board</strong>
+                </div>
+                <input
+                  value={createTitle}
+                  onChange={(event) => setCreateTitle(event.target.value)}
+                  placeholder="Board title"
+                  aria-label="New board title"
+                />
+                <button type="submit" disabled={boardApi.isCreatingBoard}>
+                  {boardApi.isCreatingBoard ? "Creating..." : "Create and open"}
+                </button>
+              </form>
+
+              <form className="board-action-card" onSubmit={handleLoadBoard}>
+                <div className="board-action-title">
+                  <FolderOpen size={20} />
+                  <strong>Load board</strong>
+                </div>
+                <input
+                  value={loadBoardId}
+                  onChange={(event) => setLoadBoardId(event.target.value)}
+                  placeholder="Paste board ID"
+                  aria-label="Existing board ID"
+                />
+                <button type="submit" disabled={boardApi.isLoadingBoard}>
+                  {boardApi.isLoadingBoard ? "Loading..." : "Load board"}
+                </button>
+              </form>
+            </div>
+
+            {board.boardId && (
+              <button className="continue-board" type="button" onClick={handleContinueBoard}>
+                Continue saved board
+              </button>
+            )}
+          </section>
+        </main>
+
+        {toast && (
+          <div className="toast">
+            <Save size={16} />
+            <span>{toast}</span>
+            <button type="button" onClick={() => setToast("")} aria-label="Dismiss">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -525,8 +669,19 @@ export default function App() {
           <span>Aw</span>
         </div>
         <div className="board-title-card">
-          <input value={board.title} onChange={(event) => updateTitle(event.target.value)} aria-label="Board title" />
+          <input
+            value={board.title}
+            onChange={(event) => updateTitle(event.target.value)}
+            onBlur={saveTitleToBackend}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            aria-label="Board title"
+          />
           <span>Last saved: {savedAt}</span>
+        </div>
+        <div className={`api-pill ${boardApi.status}`} title={boardApi.error || getApiBaseUrl()}>
+          {boardApi.status === "offline" ? "API offline" : boardApi.status === "saving" ? "Saving API" : "API connected"}
         </div>
         <button className="icon-command" type="button" onClick={undo} aria-label="Undo" title="Undo" disabled={!undoStack.length}>
           <Undo2 size={18} />
@@ -543,7 +698,7 @@ export default function App() {
           <span>Invite</span>
         </button>
         <div className="topbar-spacer" />
-        <button className="icon-command" type="button" aria-label="Home" title="Home">
+        <button className="icon-command" type="button" aria-label="Home" title="Home" onClick={() => setIsBoardOpen(false)}>
           <Home size={18} />
         </button>
         <button className="command muted" type="button">
