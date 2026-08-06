@@ -166,3 +166,16 @@ func (s *BoardService) GetAllBoardsService(ctx context.Context) (model.Boards, e
 	}
 	return boards, nil
 }
+
+func (s *BoardService) DeleteBoardByIdService(ctx context.Context, idStr string) error {
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return ErrBoardNotFound
+	}
+
+	if err := s.repo.DeleteBoardById(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete board from database: %w", err)
+	}
+
+	return nil
+}
