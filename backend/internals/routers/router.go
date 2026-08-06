@@ -17,15 +17,11 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 	boardService := service.NewBoardService(boardRepo)
 	boardController := controllers.NewBoardController(boardService)
 
-	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello world"))
-	})
-
 	mux.HandleFunc("POST /api/boards", boardController.CreateBoardController)
 	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)
 	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoardByIDController)
 	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
-
+	mux.HandleFunc("GET /api", boardController.GetAllBoardsContoller)
 	return withCORS(mux)
 }
 
