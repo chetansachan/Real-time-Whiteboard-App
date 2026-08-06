@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"log"
 	"net/http"
 	"sync"
 
@@ -43,6 +44,24 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+func (c *Client) readPump(h *Hub) {
+	defer func() {
+		h.Unregister <- c
+		c.Conn.Close()
+	}()
+	for {
+		_, message, err := c.Conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Print("Unable to read message")
+				return
+			}
+			break
+		}
+		c.Send <- message
+	}
+}
+
 func (h *Hub) Run() {
 	for {
 		select {
@@ -61,8 +80,8 @@ func (h *Hub) Run() {
 				h.mu.RLock()
 				client.Send <- message
 				h.mu.RUnlock()
-		}
-			
+			}
+
 		}
 	}
 }
