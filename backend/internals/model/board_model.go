@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 )
 
 type Page struct {
@@ -22,13 +21,4 @@ type Board struct {
 
 type Boards struct {
 	Boards []Board `json:"boards"`
-}
-
-type Client struct {
-	ID      uuid.UUID
-	UserID  uuid.UUID
-	BoardID uuid.UUID
-	Hub     *Hub
-	Conn    *websocket.Conn
-	Send    chan []byte
 }
