@@ -14,7 +14,7 @@ type Hub struct {
 	Clients    map[*Client]bool
 	Register   chan *Client
 	Unregister chan *Client
-	Inbound    chan []byte
+	Inbound    chan *Message
 	mu         sync.RWMutex
 }
 
