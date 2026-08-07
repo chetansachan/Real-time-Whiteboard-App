@@ -37,6 +37,11 @@ func NewHub() *Hub {
 	}
 }
 
+type Message struct {
+	Sender *Client
+	Content chan []byte
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
