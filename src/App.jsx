@@ -28,6 +28,7 @@ import {
   Search,
   Send,
   Shapes,
+  Share2,
   Sparkles,
   Trash2,
   Type,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import { COLORS, FILL_COLORS, TOOLS } from "./constants/whiteboard.js";
 import { useBoardApi, useBoardsList } from "./hooks/useBoardApi.js";
+import { useBoardWebSocket } from "./hooks/useBoardWebSocket.js";
 import { usePersistentBoard } from "./hooks/usePersistentBoard.js";
 import { getApiBaseUrl } from "./services/boardApi.js";
 import { renderElement, renderSelectionBox } from "./utils/canvasRenderer.js";
@@ -119,9 +121,36 @@ export default function App() {
   const [sortOption, setSortOption] = useState("recent");
   const [viewMode, setViewMode] = useState("grid");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [joinBoardIdInput, setJoinBoardIdInput] = useState("");
+  const [joinUserNameInput, setJoinUserNameInput] = useState(board.room.userName || "Guest");
+  const [isJoiningBoard, setIsJoiningBoard] = useState(false);
   const [activeMenuBoardId, setActiveMenuBoardId] = useState(null);
   const [renameBoardData, setRenameBoardData] = useState(null);
   const [renameTitleInput, setRenameTitleInput] = useState("");
+
+  const handleWsMessage = useCallback((msg) => {
+    if (!msg) return;
+    if (msg.type === "chat" && msg.text && msg.author) {
+      setBoard((current) => ({
+        ...current,
+        chat: [
+          ...current.chat,
+          { id: createId("chat"), author: msg.author, text: msg.text, time: "now" }
+        ]
+      }));
+    } else if (msg.type === "elements" && Array.isArray(msg.elements)) {
+      setBoard((current) => updateActivePageElements(current, msg.elements, current.hasUserContent));
+    } else if (msg.type === "cursor" && msg.x !== undefined && msg.y !== undefined) {
+      setRemoteCursor({ x: msg.x, y: msg.y });
+    }
+  }, [setBoard]);
+
+  const ws = useBoardWebSocket({
+    boardId: board.boardId,
+    enabled: isBoardOpen && Boolean(board.boardId),
+    onMessage: handleWsMessage
+  });
 
   const boardApi = useBoardApi({ board, enabled: isBoardOpen, setBoard, setToast });
   const { data: boardsData, isLoading: isLoadingBoards, refetch: refetchBoards } = useBoardsList({ enabled: !isBoardOpen });
@@ -154,18 +183,24 @@ export default function App() {
       setUndoStack((stack) => [...stack.slice(-29), elements]);
       setRedoStack([]);
       setBoard((current) => updateActivePageElements(current, nextElements, markUserContent ? true : current.hasUserContent));
+      ws.sendMessage({ type: "elements", elements: nextElements, sender: board.room.userName });
     },
-    [elements, setBoard]
+    [elements, setBoard, ws, board.room.userName]
   );
 
   const addElementToBoard = useCallback(
     (element) => {
       setUndoStack((stack) => [...stack.slice(-29), elements]);
       setRedoStack([]);
-      setBoard((current) => addUserElement(current, element));
+      setBoard((current) => {
+        const nextBoard = addUserElement(current, element);
+        const nextElements = getActivePage(nextBoard)?.elements || [];
+        ws.sendMessage({ type: "elements", elements: nextElements, sender: current.room.userName });
+        return nextBoard;
+      });
       setSelectedIds([element.id]);
     },
-    [elements, setBoard]
+    [elements, setBoard, ws]
   );
 
   const screenToWorld = useCallback(
@@ -281,6 +316,39 @@ export default function App() {
       setToast("Board created!");
     } catch {
       setToast("Could not create board");
+    }
+  };
+
+  const handleJoinBoardSubmit = async (event) => {
+    event.preventDefault();
+    const rawId = joinBoardIdInput.trim();
+    if (!rawId) {
+      setToast("Please enter a valid Board ID");
+      return;
+    }
+    let targetBoardId = rawId;
+    const uuidMatch = rawId.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+    if (uuidMatch) {
+      targetBoardId = uuidMatch[0];
+    }
+
+    setIsJoiningBoard(true);
+    try {
+      const remoteBoard = await boardApi.loadBoard(targetBoardId);
+      const userName = joinUserNameInput.trim() || "Partner";
+      setBoard((current) => ({
+        ...joinRoom(current, { roomName: remoteBoard.title || "Collaborative Board", userName }),
+        boardId: remoteBoard.boardId,
+        title: remoteBoard.title || current.title
+      }));
+      setLoadBoardId(remoteBoard.boardId);
+      setIsJoinModalOpen(false);
+      setIsBoardOpen(true);
+      setToast(`Joined board as ${userName}!`);
+    } catch {
+      setToast("Could not find board with that ID");
+    } finally {
+      setIsJoiningBoard(false);
     }
   };
 
@@ -674,7 +742,10 @@ export default function App() {
       setToast("Join a room before chatting");
       return;
     }
-    setBoard((current) => addChatMessage(current, chatText));
+    const text = chatText.trim();
+    if (!text) return;
+    setBoard((current) => addChatMessage(current, text));
+    ws.sendMessage({ type: "chat", author: board.room.userName || "Partner", text });
     setChatText("");
   };
 
@@ -767,6 +838,19 @@ export default function App() {
 
             <button
               type="button"
+              className="notebook-secondary-btn"
+              onClick={() => {
+                setJoinBoardIdInput("");
+                setIsJoinModalOpen(true);
+              }}
+              style={{ marginRight: "10px" }}
+            >
+              <UserRoundPlus size={18} />
+              <span>Join with ID</span>
+            </button>
+
+            <button
+              type="button"
               className="notebook-primary-btn"
               onClick={() => setIsCreateModalOpen(true)}
             >
@@ -801,6 +885,21 @@ export default function App() {
                 <Plus size={32} />
               </div>
               <span className="create-card-text">Create new board</span>
+            </div>
+
+            {/* CARD 2: JOIN BOARD AS PARTNER */}
+            <div
+              className="notebook-card join-board-card"
+              onClick={() => {
+                setJoinBoardIdInput("");
+                setIsJoinModalOpen(true);
+              }}
+            >
+              <div className="join-icon-badge">
+                <UserRoundPlus size={32} />
+              </div>
+              <span className="create-card-text">Join Board as Partner</span>
+              <span className="join-card-sub">Collaborate using Board ID</span>
             </div>
 
             {/* EXISTING BOARDS CARDS */}
@@ -851,6 +950,17 @@ export default function App() {
                             </button>
                             <button
                               type="button"
+                              onClick={() => {
+                                setActiveMenuBoardId(null);
+                                setJoinBoardIdInput(b.boardId);
+                                setIsJoinModalOpen(true);
+                              }}
+                            >
+                              <Users size={14} />
+                              <span>Join as Partner</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleStartRename(b)}
                             >
                               <Edit2 size={14} />
@@ -861,7 +971,7 @@ export default function App() {
                               onClick={() => {
                                 setActiveMenuBoardId(null);
                                 navigator.clipboard?.writeText(b.boardId);
-                                setToast("Board ID copied!");
+                                setToast("Board ID copied to clipboard!");
                               }}
                             >
                               <Copy size={14} />
@@ -935,6 +1045,61 @@ export default function App() {
                     disabled={boardApi.isCreatingBoard}
                   >
                     {boardApi.isCreatingBoard ? "Creating..." : "Create and Open"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL FOR JOINING EXISTING BOARD */}
+        {isJoinModalOpen && (
+          <div className="notebook-modal-overlay" onClick={() => setIsJoinModalOpen(false)}>
+            <div className="notebook-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="notebook-modal-head">
+                <h3>Join Board as Partner</h3>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setIsJoinModalOpen(false)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={handleJoinBoardSubmit}>
+                <div className="notebook-modal-body">
+                  <label htmlFor="modal-join-id">Board ID or Share Link</label>
+                  <input
+                    id="modal-join-id"
+                    type="text"
+                    autoFocus
+                    placeholder="Paste Board ID (e.g. 550e8400-e29b-41d4-a716-446655440000)..."
+                    value={joinBoardIdInput}
+                    onChange={(e) => setJoinBoardIdInput(e.target.value)}
+                  />
+                  <label htmlFor="modal-join-username" style={{ marginTop: "14px" }}>Your Name (Partner)</label>
+                  <input
+                    id="modal-join-username"
+                    type="text"
+                    placeholder="Enter your name..."
+                    value={joinUserNameInput}
+                    onChange={(e) => setJoinUserNameInput(e.target.value)}
+                  />
+                </div>
+                <div className="notebook-modal-foot">
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={() => setIsJoinModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-submit"
+                    disabled={isJoiningBoard}
+                  >
+                    {isJoiningBoard ? "Joining..." : "Join & Work Together"}
                   </button>
                 </div>
               </form>

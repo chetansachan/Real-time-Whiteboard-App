@@ -57,3 +57,15 @@ export function deleteBoard(boardId) {
 export function getApiBaseUrl() {
   return API_BASE_URL || "same-origin /api proxy";
 }
+
+export function getWebSocketUrl(boardId) {
+  if (!boardId) return null;
+  const loc = window.location;
+  const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
+  if (API_BASE_URL) {
+    const wsBase = API_BASE_URL.replace(/^http/, "ws");
+    return `${wsBase}/ws/boards/${boardId}/join`;
+  }
+  return `${protocol}//${loc.host}/ws/boards/${boardId}/join`;
+}
+
