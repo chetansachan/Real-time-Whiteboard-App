@@ -33,13 +33,13 @@ func NewHub() *Hub {
 		Clients:    make(map[*Client]bool),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
-		Inbound: make(chan *Message),
+		Inbound:    make(chan *Message),
 	}
 }
 
 type Message struct {
-	Sender *Client
-	Content chan []byte
+	Sender  uuid.UUID
+	Content []byte
 }
 
 var upgrader = websocket.Upgrader{
@@ -64,7 +64,10 @@ func (c *Client) readPump(h *Hub) {
 			}
 			break
 		}
-		h.Inbound <- message
+		h.Inbound <- &Message{
+			Sender:  c.UserID,
+			Content: message,
+		}
 	}
 }
 
@@ -90,10 +93,13 @@ func (h *Hub) Run() {
 			delete(h.Clients, client)
 			h.mu.Unlock()
 
-		case message := <-h.Inbound:
+		case msg := <-h.Inbound:
 			h.mu.RLock()
 			for client := range h.Clients {
-				client.Send <- message
+				if client.UserID == msg.Sender {
+					continue
+				}
+				client.Send <- msg.Content
 			}
 			h.mu.RUnlock()
 
