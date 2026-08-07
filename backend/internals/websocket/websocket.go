@@ -23,6 +23,12 @@ type HubManager struct {
 	mu sync.RWMutex
 }
 
+func NewHubManager() *HubManager{
+	return &HubManager{
+		Rooms: make(map[string]*Hub),
+	}
+}
+
 type Client struct {
 	ID      uuid.UUID
 	UserID  uuid.UUID
