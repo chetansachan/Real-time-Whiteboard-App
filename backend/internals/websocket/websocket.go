@@ -18,6 +18,11 @@ type Hub struct {
 	mu         sync.RWMutex
 }
 
+type HubManager struct {
+	Rooms map[string]*Hub
+	mu sync.RWMutex
+}
+
 type Client struct {
 	ID      uuid.UUID
 	UserID  uuid.UUID
