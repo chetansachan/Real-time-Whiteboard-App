@@ -25,6 +25,6 @@ type Element struct {
 type Elements struct {
 	Type     string    `json:"type"`
 	Sender   string    `json:"sender"`
-	PageId 	 string	   `json:"pageid"`
+	PageID   string    `json:"pageId,omitempty"`
 	Elements []Element `json:"elements"`
 }
