@@ -137,7 +137,15 @@ export default function App() {
         ]
       }));
     } else if (["elements", "draw", "move", "delete", "clear"].includes(msg.type) && Array.isArray(msg.elements)) {
-      setBoard((current) => updateActivePageElements(current, msg.elements, current.hasUserContent));
+      setBoard((current) => {
+        const targetPageId = msg.pageId || current.activePageId;
+        return {
+          ...current,
+          pages: current.pages.map((page) =>
+            page.id === targetPageId ? { ...page, elements: msg.elements } : page
+          )
+        };
+      });
     }
   }, [setBoard]);
 
@@ -178,9 +186,9 @@ export default function App() {
       setUndoStack((stack) => [...stack.slice(-29), elements]);
       setRedoStack([]);
       setBoard((current) => updateActivePageElements(current, nextElements, markUserContent ? true : current.hasUserContent));
-      ws.sendMessage({ type: "elements", elements: nextElements, sender: board.room.userName });
+      ws.sendMessage({ type: "elements", pageId: activePage?.id, elements: nextElements, sender: board.room.userName });
     },
-    [elements, setBoard, ws, board.room.userName]
+    [activePage?.id, elements, setBoard, ws, board.room.userName]
   );
 
   const addElementToBoard = useCallback(
@@ -189,8 +197,9 @@ export default function App() {
       setRedoStack([]);
       setBoard((current) => {
         const nextBoard = addUserElement(current, element);
-        const nextElements = getActivePage(nextBoard)?.elements || [];
-        ws.sendMessage({ type: "elements", elements: nextElements, sender: current.room.userName });
+        const currentPage = getActivePage(nextBoard);
+        const nextElements = currentPage?.elements || [];
+        ws.sendMessage({ type: "elements", pageId: currentPage?.id, elements: nextElements, sender: current.room.userName });
         return nextBoard;
       });
       setSelectedIds([element.id]);
