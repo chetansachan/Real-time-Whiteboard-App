@@ -30,3 +30,9 @@ type Root struct {
 	Type     string    `json:"type"`
 	Elements []Element `json:"elements"`
 }
+
+type WhiteboardMessage struct {
+	Action  string  `json:"action"` // "draw", "move", "delete", "clear"
+	RoomID  uuid.UUID  `json:"room_id"`
+	Element Element `json:"element"`
+}
