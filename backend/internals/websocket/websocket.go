@@ -29,6 +29,37 @@ func NewHubManager() *HubManager{
 	}
 }
 
+func (hm *HubManager) GetOrCreateHub(boardID uuid.UUID) *Hub {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	key := boardID.String()
+	if hub, exists := hm.Rooms[key]; exists {
+		return hub
+	}
+
+	hub := NewHub(boardID)
+	hm.Rooms[key] = hub
+	go hub.Run()
+	return hub
+}
+
+func (hm *HubManager) RemoveHubIfEmpty(boardID uuid.UUID) {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	key := boardID.String()
+	if hub, exists := hm.Rooms[key]; exists {
+		hub.mu.RLock()
+		isEmpty := len(hub.Clients) == 0
+		hub.mu.RUnlock()
+
+		if isEmpty {
+			delete(hm.Rooms, key)
+		}
+	}
+}
+
 type Client struct {
 	ID      uuid.UUID
 	UserID  uuid.UUID
@@ -38,9 +69,9 @@ type Client struct {
 	Send    chan []byte
 }
 
-func NewHub() *Hub {
+func NewHub(boardID uuid.UUID) *Hub {
 	return &Hub{
-		BoardID:    uuid.New(),
+		BoardID:    boardID,
 		Clients:    make(map[*Client]bool),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
@@ -61,7 +92,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (c *Client) readPump(h *Hub) {
+func (c *Client) readPump(h *Hub, hm *HubManager) {
 	defer func() {
 		h.Unregister <- c
 		c.Conn.Close()
@@ -70,8 +101,7 @@ func (c *Client) readPump(h *Hub) {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Print("Unable to read message")
-				return
+				log.Printf("WebSocket read error for board %s: %v", h.BoardID, err)
 			}
 			break
 		}
@@ -85,7 +115,7 @@ func (c *Client) readPump(h *Hub) {
 func (c *Client) writePump() {
 	for message := range c.Send {
 		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Print("Unable to write message")
+			log.Printf("WebSocket write error: %v", err)
 			return
 		}
 	}
@@ -101,7 +131,10 @@ func (h *Hub) Run() {
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
-			delete(h.Clients, client)
+			if _, ok := h.Clients[client]; ok {
+				delete(h.Clients, client)
+				close(client.Send)
+			}
 			h.mu.Unlock()
 
 		case msg := <-h.Inbound:
@@ -110,15 +143,28 @@ func (h *Hub) Run() {
 				if client.UserID == msg.Sender {
 					continue
 				}
-				client.Send <- msg.Content
+				select {
+				case client.Send <- msg.Content:
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
+				}
 			}
 			h.mu.RUnlock()
-
 		}
 	}
 }
 
-func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
+	boardIDStr := r.PathValue("boardId")
+	boardID, err := uuid.Parse(boardIDStr)
+	if err != nil {
+		http.Error(w, "Invalid board ID", http.StatusBadRequest)
+		return
+	}
+
+	hub := hm.GetOrCreateHub(boardID)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, "Error upgrading connection to websocket", http.StatusBadRequest)
@@ -128,13 +174,13 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		ID:      uuid.New(),
 		UserID:  uuid.New(),
-		BoardID: hub.BoardID,
+		BoardID: boardID,
 		Hub:     hub,
 		Conn:    conn,
 		Send:    make(chan []byte, 256),
 	}
 	hub.Register <- client
 
-	go client.readPump(hub)
+	go client.readPump(hub, hm)
 	go client.writePump()
 }

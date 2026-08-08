@@ -12,9 +12,8 @@ import (
 )
 
 func SetupRouter(pool *pgxpool.Pool) http.Handler {
-	hub := websocket.NewHub()
+	hm := websocket.NewHubManager()
 	mux := http.NewServeMux()
-	go hub.Run()
 
 	boardRepo := repository.NewBoardRepository(pool)
 	boardService := service.NewBoardService(boardRepo)
@@ -24,7 +23,7 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)
 	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoardByIDController)
 	mux.HandleFunc("GET /ws/boards/{boardId}/join", func(w http.ResponseWriter, r *http.Request) {
-		websocket.ServeWS(hub, w, r)
+		websocket.ServeWS(hm, w, r)
 	})
 	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
 	mux.HandleFunc("GET /api/boards", boardController.GetAllBoardsContoller)
