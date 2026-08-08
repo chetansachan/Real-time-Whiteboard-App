@@ -136,7 +136,7 @@ export default function App() {
           { id: createId("chat"), author: msg.author, text: msg.text, time: "now" }
         ]
       }));
-    } else if (msg.type === "elements" && Array.isArray(msg.elements)) {
+    } else if (["elements", "draw", "move", "delete", "clear"].includes(msg.type) && Array.isArray(msg.elements)) {
       setBoard((current) => updateActivePageElements(current, msg.elements, current.hasUserContent));
     }
   }, [setBoard]);
