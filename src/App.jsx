@@ -6,7 +6,6 @@ import {
   Copy,
   Edit2,
   Eye,
-  FolderOpen,
   Grid,
   Home,
   Info,
@@ -28,7 +27,6 @@ import {
   Search,
   Send,
   Shapes,
-  Share2,
   Sparkles,
   Trash2,
   Type,
@@ -109,10 +107,9 @@ export default function App() {
   const [chatText, setChatText] = useState("");
   const [roomForm, setRoomForm] = useState({ roomName: board.room.name, userName: board.room.userName });
   const [createTitle, setCreateTitle] = useState(board.title || "Unnamed Board");
-  const [loadBoardId, setLoadBoardId] = useState(board.boardId || "");
+  const [, setLoadBoardId] = useState(board.boardId || "");
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [toast, setToast] = useState("");
-  const [remoteCursor, setRemoteCursor] = useState({ x: 790, y: 140 });
   const [isCallOpen, setIsCallOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
@@ -141,8 +138,6 @@ export default function App() {
       }));
     } else if (msg.type === "elements" && Array.isArray(msg.elements)) {
       setBoard((current) => updateActivePageElements(current, msg.elements, current.hasUserContent));
-    } else if (msg.type === "cursor" && msg.x !== undefined && msg.y !== undefined) {
-      setRemoteCursor({ x: msg.x, y: msg.y });
     }
   }, [setBoard]);
 
@@ -154,7 +149,7 @@ export default function App() {
 
   const boardApi = useBoardApi({ board, enabled: isBoardOpen, setBoard, setToast });
   const { data: boardsData, isLoading: isLoadingBoards, refetch: refetchBoards } = useBoardsList({ enabled: !isBoardOpen });
-  const allBoards = boardsData?.boards || [];
+  const allBoards = useMemo(() => boardsData?.boards || [], [boardsData?.boards]);
 
   const filteredBoards = useMemo(() => {
     let list = [...allBoards];
@@ -245,53 +240,9 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, [redraw]);
 
-  useEffect(() => {
-    if (!board.room.isJoined) return undefined;
-    const interval = window.setInterval(() => {
-      setRemoteCursor({
-        x: 760 + Math.sin(Date.now() / 900) * 48,
-        y: 126 + Math.cos(Date.now() / 1000) * 34
-      });
-    }, 500);
-    return () => window.clearInterval(interval);
-  }, [board.room.isJoined]);
 
   const updateTitle = (title) => {
     setBoard((current) => ({ ...current, title }));
-  };
-
-  const handleCreateBoard = async (event) => {
-    event.preventDefault();
-    try {
-      const remoteBoard = await boardApi.createNewBoard(createTitle.trim() || "Unnamed Board");
-      setLoadBoardId(remoteBoard.boardId || "");
-      setIsBoardOpen(true);
-      setToast("Board created");
-    } catch {
-      setToast("Could not create board");
-    }
-  };
-
-  const handleLoadBoard = async (event) => {
-    event.preventDefault();
-    const id = loadBoardId.trim();
-    if (!id) {
-      setToast("Enter a board ID");
-      return;
-    }
-
-    try {
-      const remoteBoard = await boardApi.loadBoard(id);
-      setLoadBoardId(remoteBoard.boardId || id);
-      setIsBoardOpen(true);
-      setToast("Board loaded");
-    } catch {
-      setToast("Could not load board");
-    }
-  };
-
-  const handleContinueBoard = () => {
-    setIsBoardOpen(true);
   };
 
   const handleOpenExistingBoard = async (boardId, title) => {
@@ -907,7 +858,7 @@ export default function App() {
               <div className="notebook-state-msg">Loading boards from database...</div>
             ) : filteredBoards.length === 0 ? (
               searchQuery ? (
-                <div className="notebook-state-msg">No boards found matching "{searchQuery}"</div>
+                <div className="notebook-state-msg">No boards found matching &quot;{searchQuery}&quot;</div>
               ) : null
             ) : (
               filteredBoards.map((b, idx) => {
@@ -1245,19 +1196,15 @@ export default function App() {
             onPointerCancel={handlePointerUp}
             aria-label="Collaborative whiteboard canvas"
           />
-          {board.room.isJoined && (
-            <div
-              className="remote-cursor"
-              style={{
-                transform: `translate(${viewport.x + remoteCursor.x * viewport.zoom}px, ${viewport.y + remoteCursor.y * viewport.zoom}px)`
-              }}
-            >
-              <span>Mariya</span>
-            </div>
-          )}
-          <div className="connection-chip">
-            <LoaderCircle size={15} />
-            <span>{board.room.isJoined ? `Room: ${board.room.name}` : "Offline board"}</span>
+          <div className={`connection-chip ${ws.isConnected ? "connected" : "connecting"}`}>
+            <LoaderCircle size={15} className={ws.isConnected ? "pulse-icon" : "spin-icon"} />
+            <span>
+              {ws.isConnected
+                ? `Live Sync: ${board.title || "Connected"}`
+                : ws.status === "connecting"
+                  ? "Connecting WebSocket..."
+                  : "Offline Board"}
+            </span>
           </div>
         </div>
       </main>

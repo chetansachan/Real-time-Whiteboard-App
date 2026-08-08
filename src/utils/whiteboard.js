@@ -51,7 +51,12 @@ export function mergeRemoteBoardMetadata(currentBoard, remoteBoard) {
     boardId: remoteBoard.boardId,
     title: remoteBoard.title || currentBoard.title,
     pages: nextPages,
-    activePageId: activePageStillExists ? currentBoard.activePageId : nextPages[0]?.id || currentBoard.activePageId
+    activePageId: activePageStillExists ? currentBoard.activePageId : nextPages[0]?.id || currentBoard.activePageId,
+    room: {
+      ...currentBoard.room,
+      name: remoteBoard.title || currentBoard.room.name || "Whiteboard Room",
+      isJoined: true
+    }
   };
 }
 
@@ -222,8 +227,7 @@ export function joinRoom(board, { roomName, userName }) {
       userName: cleanUserName,
       isJoined: true,
       participants: [
-        { id: "local-user", name: cleanUserName, color: "#64be75" },
-        { id: "mock-remote", name: "Mariya", color: "#3b82f6" }
+        { id: "local-user", name: cleanUserName, color: "#64be75" }
       ]
     }
   };
