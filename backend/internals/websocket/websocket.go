@@ -140,6 +140,11 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case msg := <-h.Inbound:
+			var elements model.Elements
+			if err := json.Unmarshal(msg.Content, &elements); err != nil {
+				log.Printf("Error Invalid JSON: %v", err)
+				continue
+			}
 			h.mu.RLock()
 			for client := range h.Clients {
 				if client.UserID == msg.Sender {
