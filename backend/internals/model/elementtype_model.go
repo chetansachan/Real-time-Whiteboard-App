@@ -13,8 +13,8 @@ type Line struct {
 	Size       int       `json:"size"`
 	Type       string    `json:"type"`
 	Width      int       `json:"width"`
-	X1         float64   `json:"x1"`
-	Y1         float64   `json:"y1"`
+	X          float64   `json:"x"`
+	Y          float64   `json:"y"`
 }
 
 type Stroke struct {
@@ -23,5 +23,11 @@ type Stroke struct {
 	IsTemplate bool      `json:"is_template"`
 	Size       int       `json:"size"`
 	Type       string    `json:"type"`
-	Points	   []Point 	 `json:"points"`	
+	Points     []Point   `json:"points"`
+}
+
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
 }
