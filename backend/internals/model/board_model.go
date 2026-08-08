@@ -7,8 +7,9 @@ import (
 )
 
 type Page struct {
-	PageID uuid.UUID `json:"pageId"`
-	Name   string    `json:"name"`
+	PageID   uuid.UUID `json:"pageId"`
+	Name     string    `json:"name"`
+	Elements []Element `json:"elements"`
 }
 
 type Board struct {
