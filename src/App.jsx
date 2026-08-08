@@ -698,7 +698,8 @@ export default function App() {
   const handleLeaveRoom = () => {
     setBoard((current) => leaveRoom(current));
     setChatText("");
-    setToast("Left room");
+    setIsBoardOpen(false);
+    setToast("Left board");
   };
 
   const sendChat = (event) => {
@@ -1339,16 +1340,6 @@ export default function App() {
             </form>
           ) : (
             <>
-              {isCallOpen && (
-                <div className="call-card">
-                  <div>
-                    <strong>{board.room.name}</strong>
-                    <small>Connected as {board.room.userName}</small>
-                  </div>
-                  <Mic size={18} />
-                  <button type="button" onClick={() => setIsCallOpen(false)}>Hang up</button>
-                </div>
-              )}
               <div className="participants-card">
                 <div>
                   <Users size={18} />

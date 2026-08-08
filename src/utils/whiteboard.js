@@ -35,11 +35,12 @@ export function mergeRemoteBoardMetadata(currentBoard, remoteBoard) {
     const id = remotePage.pageId || remotePage.id;
     const name = remotePage.name || String(index + 1);
     const existing = existingById.get(id) || existingByName.get(name) || (index === 0 ? firstExistingPage : null);
+    const remoteElements = Array.isArray(remotePage.elements) ? remotePage.elements : null;
 
     return {
       id,
       name,
-      elements: existing?.elements || []
+      elements: remoteElements ?? (existing?.elements || [])
     };
   });
 
