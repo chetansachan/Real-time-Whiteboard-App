@@ -142,6 +142,7 @@ func (h *Hub) Run() {
 			var payload struct {
 				Type   string `json:"type"`
 				Sender string `json:"sender"`
+				PageId string `json:"pageid"`
 			}
 			if err := json.Unmarshal(msg.Content, &payload); err != nil {
 				log.Printf("WebSocket JSON unmarshal error: %v", err)
