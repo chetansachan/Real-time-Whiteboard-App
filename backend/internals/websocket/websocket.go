@@ -65,6 +65,7 @@ type Client struct {
 	ID      uuid.UUID
 	UserID  uuid.UUID
 	BoardID uuid.UUID
+	PageID	uuid.UUID
 	Hub     *Hub
 	Conn    *websocket.Conn
 	Send    chan []byte
@@ -148,6 +149,7 @@ func (h *Hub) Run() {
 				log.Printf("WebSocket JSON unmarshal error: %v", err)
 				continue
 			}
+			if payload.PageID == client
 			h.mu.RLock()
 			for client := range h.Clients {
 				if client.UserID == msg.Sender {
@@ -188,6 +190,7 @@ func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
 		ID:      uuid.New(),
 		UserID:  uuid.New(),
 		BoardID: boardID,
+		PageID: uuid.New(),
 		Hub:     hub,
 		Conn:    conn,
 		Send:    make(chan []byte, 256),
