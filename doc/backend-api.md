@@ -1392,6 +1392,77 @@ Replay missed events when users reconnect.
 
 Replace in-memory storage with a database.
 
+## Page-Scoped Element Syncing (Multi-Page Architecture)
+
+To ensure elements created on **Page 1** are only visible on **Page 1** and do not bleed into **Page 2**, the backend and WebSocket messaging layer must treat elements as **Page-Scoped**.
+
+### 1. Payload Specification with `pageId`
+
+Every element update message sent over WebSockets must include the `pageId` property alongside `type`, `sender`, and `elements`:
+
+```json
+{
+  "type": "elements",
+  "sender": "Chetan",
+  "pageId": "page-1",
+  "elements": [
+    {
+      "id": "stroke-123",
+      "type": "stroke",
+      "color": "#111111",
+      "size": 5,
+      "points": [[10, 20, 0.5], [15, 25, 0.5]]
+    }
+  ]
+}
+```
+
+### 2. Backend Model (`elementtype_model.go`)
+
+Update your Go `Elements` model struct to include the `PageID` field:
+
+```go
+type Elements struct {
+	Type     string    `json:"type"`
+	Sender   string    `json:"sender"`
+	PageID   string    `json:"pageId"`
+	Elements []Element `json:"elements"`
+}
+```
+
+### 3. Step-by-Step Syncing Workflows
+
+#### A. Real-Time Broadcast (WebSocket Layer)
+1. **Include `pageId` in Payload**: When a user draws or updates shapes, the frontend attaches the active `pageId` to the WebSocket payload.
+2. **Broadcast with `pageId`**: The Go `Hub.Run()` loop broadcasts the JSON payload (including `pageId`) to all connected room members.
+3. **Client-Side Page Matching**: When a client receives an `"elements"` message:
+   - If `incomingMessage.pageId === client.activePageId`: The client immediately renders the new elements on the active canvas.
+   - If `incomingMessage.pageId !== client.activePageId`: The client updates its background state store for that specific page without modifying the current canvas view. When the user switches tabs to `pageId`, the updated elements render cleanly.
+
+#### B. Database Persistence per Page
+1. **Schema Structure**: Store elements organized by `(board_id, page_id)`.
+2. **Database Save**: When persisting shapes, update the database record for that specific `page_id`.
+3. **Snapshot Hydration on Page Load**: When a user requests a board via GET `/api/boards/{boardId}`, return each page with its own isolated `elements` array:
+
+```json
+{
+  "boardId": "brd_123",
+  "title": "Project Architecture",
+  "pages": [
+    {
+      "pageId": "page-1",
+      "name": "1",
+      "elements": [ /* Only Page 1 elements */ ]
+    },
+    {
+      "pageId": "page-2",
+      "name": "2",
+      "elements": [ /* Only Page 2 elements */ ]
+    }
+  ]
+}
+```
+
 ## Common Beginner Mistakes
 
 ### Mistake: Putting Drawing Events In Chat
