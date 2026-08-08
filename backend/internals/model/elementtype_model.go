@@ -25,3 +25,8 @@ type Element struct {
 	TextColor  string    `json:"textcolor,omitempty"`
 	Points     []Point   `json:"points,omitempty"`
 }
+
+type Root struct {
+	Type     string    `json:"type"`
+	Elements []Element `json:"elements"`
+}
