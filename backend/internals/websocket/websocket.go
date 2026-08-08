@@ -20,10 +20,10 @@ type Hub struct {
 
 type HubManager struct {
 	Rooms map[string]*Hub
-	mu sync.RWMutex
+	mu    sync.RWMutex
 }
 
-func NewHubManager() *HubManager{
+func NewHubManager() *HubManager {
 	return &HubManager{
 		Rooms: make(map[string]*Hub),
 	}
@@ -92,7 +92,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (c *Client) readPump(h *Hub, hm *HubManager) {
+func (c *Client) readPump(h *Hub) {
 	defer func() {
 		h.Unregister <- c
 		c.Conn.Close()
@@ -181,6 +181,6 @@ func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
 	}
 	hub.Register <- client
 
-	go client.readPump(hub, hm)
+	go client.readPump(hub)
 	go client.writePump()
 }
