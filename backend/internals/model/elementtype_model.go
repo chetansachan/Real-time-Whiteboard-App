@@ -57,3 +57,15 @@ type Circle struct {
 	X          float64   `json:"x"`
 	Y          float64   `json:"y"`
 }
+
+type Text struct {
+	Color      string    `json:"color"`
+	ID         uuid.UUID `json:"id"`
+	IsTemplate bool      `json:"is_template"`
+	Size       int       `json:"size"`
+	Text       string    `json:"text"`
+	Type       string    `json:"type"`
+	Width      int       `json:"width"`
+	X          float64   `json:"x"`
+	Y          float64   `json:"y"`
+}
