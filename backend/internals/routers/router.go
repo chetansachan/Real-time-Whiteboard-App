@@ -12,12 +12,12 @@ import (
 )
 
 func SetupRouter(pool *pgxpool.Pool) http.Handler {
-	hm := websocket.NewHubManager()
-	mux := http.NewServeMux()
-
 	boardRepo := repository.NewBoardRepository(pool)
 	boardService := service.NewBoardService(boardRepo)
 	boardController := controllers.NewBoardController(boardService)
+
+	hm := websocket.NewHubManager(boardService)
+	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/boards", boardController.CreateBoardController)
 	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)

@@ -1,32 +1,40 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
+	"time"
+
+	"realtime-whiteboard/internals/model"
+	"realtime-whiteboard/internals/service"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
 type Hub struct {
-	BoardID    uuid.UUID
-	Clients    map[*Client]bool
-	Register   chan *Client
-	Unregister chan *Client
-	Inbound    chan *Message
-	mu         sync.RWMutex
+	BoardID      uuid.UUID
+	Clients      map[*Client]bool
+	Register     chan *Client
+	Unregister   chan *Client
+	Inbound      chan *Message
+	boardService *service.BoardService
+	mu           sync.RWMutex
 }
 
 type HubManager struct {
-	Rooms map[string]*Hub
-	mu    sync.RWMutex
+	Rooms        map[string]*Hub
+	boardService *service.BoardService
+	mu           sync.RWMutex
 }
 
-func NewHubManager() *HubManager {
+func NewHubManager(boardService *service.BoardService) *HubManager {
 	return &HubManager{
-		Rooms: make(map[string]*Hub),
+		Rooms:        make(map[string]*Hub),
+		boardService: boardService,
 	}
 }
 
@@ -39,7 +47,7 @@ func (hm *HubManager) GetOrCreateHub(boardID uuid.UUID) *Hub {
 		return hub
 	}
 
-	hub := NewHub(boardID)
+	hub := NewHub(boardID, hm.boardService)
 	hm.Rooms[key] = hub
 	go hub.Run()
 	return hub
@@ -70,13 +78,14 @@ type Client struct {
 	Send    chan []byte
 }
 
-func NewHub(boardID uuid.UUID) *Hub {
+func NewHub(boardID uuid.UUID, boardService *service.BoardService) *Hub {
 	return &Hub{
-		BoardID:    boardID,
-		Clients:    make(map[*Client]bool),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		Inbound:    make(chan *Message),
+		BoardID:      boardID,
+		Clients:      make(map[*Client]bool),
+		Register:     make(chan *Client),
+		Unregister:   make(chan *Client),
+		Inbound:      make(chan *Message),
+		boardService: boardService,
 	}
 }
 
@@ -148,6 +157,21 @@ func (h *Hub) Run() {
 				log.Printf("WebSocket JSON unmarshal error: %v", err)
 				continue
 			}
+
+			// Persist elements to PostgreSQL database
+			if h.boardService != nil && payload.PageID != "" && (payload.Type == "elements" || payload.Type == "draw" || payload.Type == "move" || payload.Type == "delete" || payload.Type == "clear") {
+				var elementsMsg model.Elements
+				if err := json.Unmarshal(msg.Content, &elementsMsg); err == nil && elementsMsg.PageID != "" {
+					go func(pageID string, elements []model.Element) {
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if err := h.boardService.SavePageElementsService(ctx, pageID, elements); err != nil {
+							log.Printf("Failed to save elements for page %s to database: %v", pageID, err)
+						}
+					}(elementsMsg.PageID, elementsMsg.Elements)
+				}
+			}
+
 			h.mu.RLock()
 			for client := range h.Clients {
 				if client.UserID == msg.Sender {

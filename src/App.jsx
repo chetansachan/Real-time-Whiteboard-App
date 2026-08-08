@@ -108,7 +108,21 @@ export default function App() {
   const [roomForm, setRoomForm] = useState({ roomName: board.room.name, userName: board.room.userName });
   const [createTitle, setCreateTitle] = useState(board.title || "Unnamed Board");
   const [, setLoadBoardId] = useState(board.boardId || "");
-  const [isBoardOpen, setIsBoardOpen] = useState(false);
+  const [isBoardOpen, setIsBoardOpen] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("boardId")) || localStorage.getItem("is_board_open") === "true";
+  });
+
+  useEffect(() => {
+    if (isBoardOpen) {
+      localStorage.setItem("is_board_open", "true");
+      if (board.boardId) {
+        localStorage.setItem("active_board_id", board.boardId);
+      }
+    } else {
+      localStorage.removeItem("is_board_open");
+    }
+  }, [isBoardOpen, board.boardId]);
   const [toast, setToast] = useState("");
   const [isCallOpen, setIsCallOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
@@ -262,6 +276,8 @@ export default function App() {
   const handleOpenExistingBoard = async (boardId, title) => {
     setLoadBoardId(boardId);
     try {
+      localStorage.setItem("active_board_id", boardId);
+      localStorage.setItem("is_board_open", "true");
       await boardApi.loadBoard(boardId);
       setIsBoardOpen(true);
       setToast(`Opened: ${title || "Board"}`);
@@ -696,6 +712,8 @@ export default function App() {
   };
 
   const handleLeaveRoom = () => {
+    localStorage.removeItem("is_board_open");
+    localStorage.removeItem("active_board_id");
     setBoard((current) => leaveRoom(current));
     setChatText("");
     setIsBoardOpen(false);
