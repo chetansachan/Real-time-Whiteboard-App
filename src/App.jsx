@@ -139,11 +139,16 @@ export default function App() {
     } else if (["elements", "draw", "move", "delete", "clear"].includes(msg.type) && Array.isArray(msg.elements)) {
       setBoard((current) => {
         const targetPageId = msg.pageId || current.activePageId;
+        const pageExists = current.pages.some((page) => page.id === targetPageId);
+        const updatedPages = pageExists
+          ? current.pages.map((page) =>
+              page.id === targetPageId ? { ...page, elements: msg.elements } : page
+            )
+          : [...current.pages, { id: targetPageId, name: String(current.pages.length + 1), elements: msg.elements }];
+        
         return {
           ...current,
-          pages: current.pages.map((page) =>
-            page.id === targetPageId ? { ...page, elements: msg.elements } : page
-          )
+          pages: updatedPages
         };
       });
     }
