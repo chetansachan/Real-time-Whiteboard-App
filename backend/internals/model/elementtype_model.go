@@ -26,7 +26,7 @@ type Element struct {
 	Points     []Point   `json:"points,omitempty"`
 }
 
-type Root struct {
+type Elements struct {
 	Type     string    `json:"type"`
 	Sender 	 string	   `json:"sender"`	
 	Elements []Element `json:"elements"`
