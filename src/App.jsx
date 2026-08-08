@@ -41,6 +41,7 @@ import { COLORS, FILL_COLORS, TOOLS } from "./constants/whiteboard.js";
 import { useBoardApi, useBoardsList } from "./hooks/useBoardApi.js";
 import { useBoardWebSocket } from "./hooks/useBoardWebSocket.js";
 import { usePersistentBoard } from "./hooks/usePersistentBoard.js";
+import { useNavigate, useLocation, useParams, Routes, Route } from "react-router-dom";
 import { getApiBaseUrl } from "./services/boardApi.js";
 import { renderElement, renderSelectionBox } from "./utils/canvasRenderer.js";
 import {
@@ -90,6 +91,10 @@ function formatDate(isoString) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams();
+
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const dragRef = useRef(null);
@@ -108,21 +113,10 @@ export default function App() {
   const [roomForm, setRoomForm] = useState({ roomName: board.room.name, userName: board.room.userName });
   const [createTitle, setCreateTitle] = useState(board.title || "Unnamed Board");
   const [, setLoadBoardId] = useState(board.boardId || "");
-  const [isBoardOpen, setIsBoardOpen] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return Boolean(params.get("boardId")) || localStorage.getItem("is_board_open") === "true";
-  });
 
-  useEffect(() => {
-    if (isBoardOpen) {
-      localStorage.setItem("is_board_open", "true");
-      if (board.boardId) {
-        localStorage.setItem("active_board_id", board.boardId);
-      }
-    } else {
-      localStorage.removeItem("is_board_open");
-    }
-  }, [isBoardOpen, board.boardId]);
+  const isBoardRoute = location.pathname.startsWith("/board/");
+  const routeBoardId = location.pathname.split("/board/")[1] || params.boardId;
+  const isBoardOpen = isBoardRoute && Boolean(routeBoardId);
   const [toast, setToast] = useState("");
   const [isCallOpen, setIsCallOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
@@ -269,6 +263,15 @@ export default function App() {
   }, [redraw]);
 
 
+  useEffect(() => {
+    if (isBoardRoute && routeBoardId && routeBoardId !== board.boardId) {
+      boardApi.loadBoard(routeBoardId).catch(() => {
+        setToast("Could not load board from URL");
+        navigate("/");
+      });
+    }
+  }, [isBoardRoute, routeBoardId, board.boardId]);
+
   const updateTitle = (title) => {
     setBoard((current) => ({ ...current, title }));
   };
@@ -276,10 +279,8 @@ export default function App() {
   const handleOpenExistingBoard = async (boardId, title) => {
     setLoadBoardId(boardId);
     try {
-      localStorage.setItem("active_board_id", boardId);
-      localStorage.setItem("is_board_open", "true");
       await boardApi.loadBoard(boardId);
-      setIsBoardOpen(true);
+      navigate(`/board/${boardId}`);
       setToast(`Opened: ${title || "Board"}`);
     } catch {
       setToast("Could not load board");
@@ -293,7 +294,7 @@ export default function App() {
       const remoteBoard = await boardApi.createNewBoard(title);
       setLoadBoardId(remoteBoard.boardId || "");
       setIsCreateModalOpen(false);
-      setIsBoardOpen(true);
+      navigate(`/board/${remoteBoard.boardId}`);
       setToast("Board created!");
     } catch {
       setToast("Could not create board");
@@ -324,7 +325,7 @@ export default function App() {
       }));
       setLoadBoardId(remoteBoard.boardId);
       setIsJoinModalOpen(false);
-      setIsBoardOpen(true);
+      navigate(`/board/${remoteBoard.boardId}`);
       setToast(`Joined board as ${userName}!`);
     } catch {
       setToast("Could not find board with that ID");
@@ -712,11 +713,9 @@ export default function App() {
   };
 
   const handleLeaveRoom = () => {
-    localStorage.removeItem("is_board_open");
-    localStorage.removeItem("active_board_id");
     setBoard((current) => leaveRoom(current));
     setChatText("");
-    setIsBoardOpen(false);
+    navigate("/");
     setToast("Left board");
   };
 
@@ -765,7 +764,7 @@ export default function App() {
     return (
       <div className="notebook-shell">
         <header className="notebook-header">
-          <div className="notebook-brand">
+          <div className="notebook-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}>
             <div className="notebook-logo">
               <span>Aw</span>
             </div>
@@ -1154,7 +1153,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand" aria-label="Realtime whiteboard logo">
+        <div className="brand" aria-label="Realtime whiteboard logo" onClick={() => navigate("/")} style={{ cursor: "pointer" }}>
           <span>Aw</span>
         </div>
         <div className="board-title-card">
@@ -1187,7 +1186,7 @@ export default function App() {
           <span>Invite</span>
         </button>
         <div className="topbar-spacer" />
-        <button className="icon-command" type="button" aria-label="Home" title="Home" onClick={() => setIsBoardOpen(false)}>
+        <button className="icon-command" type="button" aria-label="Home" title="Home" onClick={() => navigate("/")}>
           <Home size={18} />
         </button>
         <button className="command muted" type="button">
