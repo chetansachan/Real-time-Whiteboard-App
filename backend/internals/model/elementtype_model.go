@@ -44,3 +44,16 @@ type Rectangle struct {
 	X          float64   `json:"x"`
 	Y          float64   `json:"y"`
 }
+
+type Circle struct {
+	Color      string    `json:"color"`
+	Fill       string    `json:"fill"`
+	Height     int       `json:"height"`
+	ID         uuid.UUID `json:"id"`
+	IsTemplate bool      `json:"is_template"`
+	Size       int       `json:"size"`
+	Type       string    `json:"type"`
+	Width      int       `json:"width"`
+	X          float64   `json:"x"`
+	Y          float64   `json:"y"`
+}
