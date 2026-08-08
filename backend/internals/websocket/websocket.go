@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"realtime-whiteboard/internals/model"
 	"sync"
 
 	"github.com/google/uuid"
@@ -140,9 +139,12 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case msg := <-h.Inbound:
-			var elements model.Elements
-			if err := json.Unmarshal(msg.Content, &elements); err != nil {
-				log.Printf("Error Invalid JSON: %v", err)
+			var payload struct {
+				Type   string `json:"type"`
+				Sender string `json:"sender"`
+			}
+			if err := json.Unmarshal(msg.Content, &payload); err != nil {
+				log.Printf("WebSocket JSON unmarshal error: %v", err)
 				continue
 			}
 			h.mu.RLock()
@@ -150,7 +152,7 @@ func (h *Hub) Run() {
 				if client.UserID == msg.Sender {
 					continue
 				}
-				switch elements.Type {
+				switch payload.Type {
 				case "draw", "move", "delete", "cursor", "clear", "elements", "chat":
 					select {
 					case client.Send <- msg.Content:
