@@ -16,3 +16,12 @@ type Line struct {
 	X1         float64   `json:"x1"`
 	Y1         float64   `json:"y1"`
 }
+
+type Stroke struct {
+	Color      string    `json:"color"`
+	ID         uuid.UUID `json:"id"`
+	IsTemplate bool      `json:"is_template"`
+	Size       int       `json:"size"`
+	Type       string    `json:"type"`
+	Points	   []Point 	 `json:"points"`	
+}
