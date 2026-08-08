@@ -1,8 +1,10 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"realtime-whiteboard/internals/model"
 	"sync"
 
 	"github.com/google/uuid"
@@ -143,11 +145,14 @@ func (h *Hub) Run() {
 				if client.UserID == msg.Sender {
 					continue
 				}
-				select {
-				case client.Send <- msg.Content:
-				default:
-					close(client.Send)
-					delete(h.Clients, client)
+				switch elements.Type {
+				case "draw", "move", "delete", "cursor", "clear", "elements", "chat":
+					select {
+					case client.Send <- msg.Content:
+					default:
+						close(client.Send)
+						delete(h.Clients, client)
+					}
 				}
 			}
 			h.mu.RUnlock()
