@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -34,11 +35,15 @@ func (r *BoardRepository) CreateBoard(ctx context.Context, board *model.Board) e
 	}
 
 	queryPage := `
-		INSERT INTO pages (page_id, board_id, name)
-		VALUES ($1, $2, $3)
+		INSERT INTO pages (page_id, board_id, name, elements)
+		VALUES ($1, $2, $3, $4)
 	`
 	for _, page := range board.Pages {
-		_, err := r.pool.Exec(ctx, queryPage, page.PageID, board.BoardID, page.Name)
+		elementsJSON, err := json.Marshal(page.Elements)
+		if err != nil {
+			elementsJSON = []byte("[]")
+		}
+		_, err = r.pool.Exec(ctx, queryPage, page.PageID, board.BoardID, page.Name, elementsJSON)
 		if err != nil {
 			return fmt.Errorf("failed to insert page into database: %w", err)
 		}
@@ -58,7 +63,7 @@ func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model
 		return b, fmt.Errorf("failed to query board: %w", err)
 	}
 
-	queryPages := `SELECT page_id, name FROM pages WHERE board_id = $1`
+	queryPages := `SELECT page_id, name, elements FROM pages WHERE board_id = $1`
 	rows, err := r.pool.Query(ctx, queryPages, id)
 	if err != nil {
 		return b, fmt.Errorf("failed to query board pages: %w", err)
@@ -68,8 +73,15 @@ func (r *BoardRepository) GetBoardByID(ctx context.Context, id uuid.UUID) (model
 	b.Pages = []model.Page{}
 	for rows.Next() {
 		var p model.Page
-		if err := rows.Scan(&p.PageID, &p.Name); err != nil {
+		var elementsRaw []byte
+		if err := rows.Scan(&p.PageID, &p.Name, &elementsRaw); err != nil {
 			return b, fmt.Errorf("failed to scan page: %w", err)
+		}
+		if len(elementsRaw) > 0 {
+			_ = json.Unmarshal(elementsRaw, &p.Elements)
+		}
+		if p.Elements == nil {
+			p.Elements = []model.Element{}
 		}
 		b.Pages = append(b.Pages, p)
 	}
@@ -93,7 +105,7 @@ func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, tit
 		return model.Board{}, fmt.Errorf("failed to update board into database: %w", err)
 	}
 
-	queryPages := `SELECT page_id, name FROM pages WHERE board_id = $1`
+	queryPages := `SELECT page_id, name, elements FROM pages WHERE board_id = $1`
 	rows, err := r.pool.Query(ctx, queryPages, id)
 	if err != nil {
 		return board, fmt.Errorf("failed to query board pages: %w", err)
@@ -103,8 +115,15 @@ func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, tit
 	board.Pages = []model.Page{}
 	for rows.Next() {
 		var p model.Page
-		if err := rows.Scan(&p.PageID, &p.Name); err != nil {
+		var elementsRaw []byte
+		if err := rows.Scan(&p.PageID, &p.Name, &elementsRaw); err != nil {
 			return board, fmt.Errorf("failed to scan page: %w", err)
+		}
+		if len(elementsRaw) > 0 {
+			_ = json.Unmarshal(elementsRaw, &p.Elements)
+		}
+		if p.Elements == nil {
+			p.Elements = []model.Element{}
 		}
 		board.Pages = append(board.Pages, p)
 	}
@@ -114,18 +133,42 @@ func (r *BoardRepository) UpdateBoardByID(ctx context.Context, id uuid.UUID, tit
 
 func (r *BoardRepository) AddPageByID(ctx context.Context, id uuid.UUID, name string) (model.Page, error) {
 	page := model.Page{
-		PageID: uuid.New(),
-		Name:   name,
+		PageID:   uuid.New(),
+		Name:     name,
+		Elements: []model.Element{},
 	}
 	queryPage := `
-		INSERT INTO pages (page_id, board_id, name)
-		VALUES ($1, $2, $3)
+		INSERT INTO pages (page_id, board_id, name, elements)
+		VALUES ($1, $2, $3, $4)
 	`
-	_, err := r.pool.Exec(ctx, queryPage, page.PageID, id, page.Name)
+	elementsJSON, err := json.Marshal(page.Elements)
+	if err != nil {
+		elementsJSON = []byte("[]")
+	}
+	_, err = r.pool.Exec(ctx, queryPage, page.PageID, id, page.Name, elementsJSON)
 	if err != nil {
 		return model.Page{}, fmt.Errorf("failed to insert page into database: %w", err)
 	}
 	return page, nil
+}
+
+func (r *BoardRepository) SavePageElements(ctx context.Context, pageID uuid.UUID, elements []model.Element) error {
+	elementsJSON, err := json.Marshal(elements)
+	if err != nil {
+		return fmt.Errorf("failed to marshal page elements: %w", err)
+	}
+
+	query := `
+		UPDATE pages 
+		SET elements = $1
+		WHERE page_id = $2
+	`
+	_, err = r.pool.Exec(ctx, query, elementsJSON, pageID)
+	if err != nil {
+		return fmt.Errorf("failed to save page elements to database: %w", err)
+	}
+
+	return nil
 }
 
 func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error) {
