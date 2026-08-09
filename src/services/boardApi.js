@@ -54,18 +54,23 @@ export function deleteBoard(boardId) {
   });
 }
 
+export function getBoardEventsAfter(boardId, afterCursor = 0) {
+  return request(`/api/boards/${boardId}/events?after=${afterCursor}`);
+}
+
 export function getApiBaseUrl() {
   return API_BASE_URL || "same-origin /api proxy";
 }
 
-export function getWebSocketUrl(boardId) {
+export function getWebSocketUrl(boardId, cursor) {
   if (!boardId) return null;
   const loc = window.location;
   const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
+  const cursorQuery = cursor ? `?cursor=${cursor}` : "";
   if (API_BASE_URL) {
     const wsBase = API_BASE_URL.replace(/^http/, "ws");
-    return `${wsBase}/ws/boards/${boardId}/join`;
+    return `${wsBase}/ws/boards/${boardId}/join${cursorQuery}`;
   }
-  return `${protocol}//${loc.host}/ws/boards/${boardId}/join`;
+  return `${protocol}//${loc.host}/ws/boards/${boardId}/join${cursorQuery}`;
 }
 
