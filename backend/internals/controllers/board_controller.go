@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"realtime-whiteboard/internals/model"
 	"realtime-whiteboard/internals/service"
@@ -161,7 +162,7 @@ func (c *BoardController) GetAllBoardsContoller(w http.ResponseWriter, r *http.R
 }
 
 func (c *BoardController) DeleteBoardByIdController(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete{
+	if r.Method != http.MethodDelete {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -173,4 +174,37 @@ func (c *BoardController) DeleteBoardByIdController(w http.ResponseWriter, r *ht
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (c *BoardController) GetEventsAfterController(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.PathValue("id")
+	afterStr := r.URL.Query().Get("after")
+	var afterCursor int64 = 0
+	if afterStr != "" {
+		if val, err := strconv.ParseInt(afterStr, 10, 64); err == nil {
+			afterCursor = val
+		}
+	}
+
+	res, err := c.boardService.GetEventsAfterService(r.Context(), id, afterCursor)
+	if err != nil {
+		if errors.Is(err, service.ErrBoardNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, "Error Encoding response data", http.StatusInternalServerError)
+		return
+	}
 }
