@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getWebSocketUrl } from "../services/boardApi.js";
 
-export function useBoardWebSocket({ boardId, enabled = false, onMessage, onError }) {
+export function useBoardWebSocket({ boardId, enabled = false, initialCursor = 0, onMessage, onError }) {
   const [status, setStatus] = useState("disconnected");
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const lastSeenCursorRef = useRef(initialCursor);
+
+  useEffect(() => {
+    if (initialCursor > lastSeenCursorRef.current) {
+      lastSeenCursorRef.current = initialCursor;
+    }
+  }, [initialCursor]);
 
   const connect = useCallback(() => {
     if (!boardId || !enabled) return;
 
-    const url = getWebSocketUrl(boardId);
+    const url = getWebSocketUrl(boardId, lastSeenCursorRef.current);
     if (!url) return;
 
     setStatus("connecting");
@@ -24,6 +31,9 @@ export function useBoardWebSocket({ boardId, enabled = false, onMessage, onError
       if (!event.data) return;
       try {
         const parsed = JSON.parse(event.data);
+        if (parsed && typeof parsed.cursor === "number" && parsed.cursor > 0) {
+          lastSeenCursorRef.current = parsed.cursor;
+        }
         onMessage?.(parsed);
       } catch {
         onMessage?.(event.data);
