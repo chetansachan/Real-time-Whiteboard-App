@@ -162,16 +162,16 @@ func (h *Hub) Run() {
 			}
 
 			// Persist elements to PostgreSQL database
-			if h.boardService != nil && payload.PageID != "" && (payload.Type == "elements" || payload.Type == "draw" || payload.Type == "move" || payload.Type == "delete" || payload.Type == "clear") {
+			if h.boardService != nil && (payload.Type == "elements" || payload.Type == "draw" || payload.Type == "move" || payload.Type == "delete" || payload.Type == "clear") {
 				var elementsMsg model.Elements
-				if err := json.Unmarshal(msg.Content, &elementsMsg); err == nil && elementsMsg.PageID != "" {
-					go func(pageID string, elements []model.Element) {
+				if err := json.Unmarshal(msg.Content, &elementsMsg); err == nil {
+					go func(boardID uuid.UUID, pageID string, elements []model.Element) {
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 						defer cancel()
-						if err := h.boardService.SavePageElementsService(ctx, pageID, elements); err != nil {
-							log.Printf("Failed to save elements for page %s to database: %v", pageID, err)
+						if err := h.boardService.SavePageElementsService(ctx, boardID, pageID, elements); err != nil {
+							log.Printf("Failed to save elements for board %s: %v", boardID, err)
 						}
-					}(elementsMsg.PageID, elementsMsg.Elements)
+					}(h.BoardID, elementsMsg.PageID, elementsMsg.Elements)
 				}
 			}
 
@@ -248,6 +248,27 @@ func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
 		Hub:     hub,
 		Conn:    conn,
 		Send:    make(chan []byte, 256),
+	}
+
+	// Send current board state to newly connected client so they receive all existing work
+	if hub.boardService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		boardData, err := hub.boardService.GetBoardByIDService(ctx, boardID.String())
+		cancel()
+		if err == nil {
+			for _, page := range boardData.Board.Pages {
+				if len(page.Elements) > 0 {
+					syncMsg := model.Elements{
+						Type:     "elements",
+						PageID:   page.PageID.String(),
+						Elements: page.Elements,
+					}
+					if msgBytes, err := json.Marshal(syncMsg); err == nil {
+						client.Send <- msgBytes
+					}
+				}
+			}
+		}
 	}
 
 	// Replay missed events if client reconnected with a cursor

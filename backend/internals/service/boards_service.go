@@ -186,13 +186,8 @@ func (s *BoardService) DeleteBoardByIdService(ctx context.Context, idStr string)
 	return nil
 }
 
-func (s *BoardService) SavePageElementsService(ctx context.Context, pageIDStr string, elements []model.Element) error {
-	pageID, err := uuid.Parse(pageIDStr)
-	if err != nil {
-		return errors.New("invalid page ID")
-	}
-
-	if err := s.repo.SavePageElements(ctx, pageID, elements); err != nil {
+func (s *BoardService) SavePageElementsService(ctx context.Context, boardID uuid.UUID, pageIDStr string, elements []model.Element) error {
+	if err := s.repo.SaveBoardPageElements(ctx, boardID, pageIDStr, elements); err != nil {
 		return fmt.Errorf("failed to save page elements: %w", err)
 	}
 

@@ -172,6 +172,32 @@ func (r *BoardRepository) SavePageElements(ctx context.Context, pageID uuid.UUID
 	return nil
 }
 
+func (r *BoardRepository) SaveBoardPageElements(ctx context.Context, boardID uuid.UUID, pageIDStr string, elements []model.Element) error {
+	elementsJSON, err := json.Marshal(elements)
+	if err != nil {
+		return fmt.Errorf("failed to marshal page elements: %w", err)
+	}
+
+	pageID, parseErr := uuid.Parse(pageIDStr)
+	if parseErr == nil {
+		tag, err := r.pool.Exec(ctx, `UPDATE pages SET elements = $1 WHERE page_id = $2`, elementsJSON, pageID)
+		if err == nil && tag.RowsAffected() > 0 {
+			return nil
+		}
+	}
+
+	// Fallback: update page by board_id
+	_, err = r.pool.Exec(ctx, `
+		UPDATE pages 
+		SET elements = $1 
+		WHERE board_id = $2 AND page_id = (SELECT page_id FROM pages WHERE board_id = $2 ORDER BY page_id LIMIT 1)
+	`, elementsJSON, boardID)
+	if err != nil {
+		return fmt.Errorf("failed to save page elements by board id: %w", err)
+	}
+	return nil
+}
+
 func (r *BoardRepository) GetAllBoards(ctx context.Context) (model.Boards, error) {
 	var result model.Boards
 	result.Boards = []model.Board{}

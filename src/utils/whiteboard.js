@@ -35,12 +35,21 @@ export function mergeRemoteBoardMetadata(currentBoard, remoteBoard) {
     const id = remotePage.pageId || remotePage.id;
     const name = remotePage.name || String(index + 1);
     const existing = existingById.get(id) || existingByName.get(name) || (index === 0 ? firstExistingPage : null);
-    const remoteElements = Array.isArray(remotePage.elements) ? remotePage.elements : null;
+    const remoteElements = Array.isArray(remotePage.elements) ? remotePage.elements : [];
+
+    let mergedElements = remoteElements;
+    if (remoteElements.length === 0 && existing?.elements?.length > 0 && !existing.elements.every((e) => e.isTemplate)) {
+      mergedElements = existing.elements.filter((e) => !e.isTemplate);
+    } else if (remoteElements.length > 0 && existing?.elements?.length > 0) {
+      const remoteIds = new Set(remoteElements.map((e) => e.id));
+      const extraLocal = existing.elements.filter((e) => !remoteIds.has(e.id) && !e.isTemplate);
+      mergedElements = [...remoteElements, ...extraLocal];
+    }
 
     return {
       id,
       name,
-      elements: remoteElements ?? (existing?.elements || [])
+      elements: mergedElements
     };
   });
 

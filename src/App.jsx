@@ -153,16 +153,33 @@ export default function App() {
           { id: createId("chat"), author: data.author, text: data.text, time: "now" }
         ]
       }));
-    } else if (["elements", "draw", "move", "delete", "clear"].includes(type) && Array.isArray(data.elements)) {
+    } else if (["elements", "draw", "move", "delete", "clear"].includes(type)) {
       setBoard((current) => {
         const targetPageId = data.pageId || current.activePageId;
-        const pageExists = current.pages.some((page) => page.id === targetPageId);
-        const updatedPages = pageExists
-          ? current.pages.map((page) =>
-              page.id === targetPageId ? { ...page, elements: data.elements } : page
-            )
-          : [...current.pages, { id: targetPageId, name: String(current.pages.length + 1), elements: data.elements }];
-        
+
+        const updatedPages = current.pages.map((page) => {
+          const isTarget = page.id === targetPageId || page.pageId === targetPageId || current.pages.length === 1;
+          if (!isTarget) return page;
+
+          let nextElements = page.elements;
+
+          if (type === "draw" && data.element) {
+            const exists = page.elements.some((el) => el.id === data.element.id);
+            nextElements = exists
+              ? page.elements.map((el) => (el.id === data.element.id ? data.element : el))
+              : [...page.elements.filter((el) => !el.isTemplate), data.element];
+          } else if (type === "clear") {
+            nextElements = [];
+          } else if (type === "delete" && Array.isArray(data.elementIds)) {
+            const deleteSet = new Set(data.elementIds);
+            nextElements = page.elements.filter((el) => !deleteSet.has(el.id));
+          } else if (Array.isArray(data.elements)) {
+            nextElements = data.elements.filter((el) => !el.isTemplate);
+          }
+
+          return { ...page, elements: nextElements };
+        });
+
         return {
           ...current,
           pages: updatedPages
@@ -411,10 +428,21 @@ export default function App() {
   };
 
   const eraseAt = (point) => {
-    const next = elements.filter((element) => !isPointInElement(point, element));
-    if (next.length !== elements.length) {
-      commitElements(next);
+    const erased = elements.filter((element) => isPointInElement(point, element));
+    if (erased.length > 0) {
+      const erasedIds = erased.map((el) => el.id);
+      const next = elements.filter((element) => !isPointInElement(point, element));
+      setUndoStack((stack) => [...stack.slice(-29), elements]);
+      setRedoStack([]);
+      setBoard((current) => updateActivePageElements(current, next, current.hasUserContent));
       setSelectedIds([]);
+      ws.sendMessage({
+        type: "delete",
+        pageId: activePage?.id,
+        elementIds: erasedIds,
+        elements: next,
+        sender: board.room.userName
+      });
     }
   };
 
@@ -603,16 +631,34 @@ export default function App() {
 
   const clearBoard = () => {
     if (elements.length && window.confirm("Clear this page?")) {
-      commitElements([]);
+      setUndoStack((stack) => [...stack.slice(-29), elements]);
+      setRedoStack([]);
+      setBoard((current) => updateActivePageElements(current, [], current.hasUserContent));
       setSelectedIds([]);
+      ws.sendMessage({
+        type: "clear",
+        pageId: activePage?.id,
+        elements: [],
+        sender: board.room.userName
+      });
     }
   };
 
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length) return;
-    commitElements(deleteElements(elements, selectedIds));
+    const next = deleteElements(elements, selectedIds);
+    setUndoStack((stack) => [...stack.slice(-29), elements]);
+    setRedoStack([]);
+    setBoard((current) => updateActivePageElements(current, next, current.hasUserContent));
+    ws.sendMessage({
+      type: "delete",
+      pageId: activePage?.id,
+      elementIds: selectedIds,
+      elements: next,
+      sender: board.room.userName
+    });
     setSelectedIds([]);
-  }, [commitElements, elements, selectedIds]);
+  }, [activePage?.id, board.room.userName, elements, selectedIds, setBoard, ws]);
 
   const duplicateSelected = () => {
     if (!selectedIds.length) return;
