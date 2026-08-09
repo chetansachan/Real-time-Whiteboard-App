@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -149,9 +150,11 @@ func (h *Hub) Run() {
 
 		case msg := <-h.Inbound:
 			var payload struct {
-				Type   string `json:"type"`
-				Sender string `json:"sender"`
-				PageID string `json:"pageId,omitempty"`
+				ID       string          `json:"id,omitempty"`
+				Type     string          `json:"type"`
+				Sender   string          `json:"sender,omitempty"`
+				PageID   string          `json:"pageId,omitempty"`
+				Payload  json.RawMessage `json:"payload,omitempty"`
 			}
 			if err := json.Unmarshal(msg.Content, &payload); err != nil {
 				log.Printf("WebSocket JSON unmarshal error: %v", err)
@@ -172,19 +175,41 @@ func (h *Hub) Run() {
 				}
 			}
 
+			// Assign server cursor & persist to events log if it is a persistent event
+			var broadcastBytes []byte = msg.Content
+			if h.boardService != nil && payload.Type != "presence.cursor" && payload.Type != "cursor" {
+				env := model.EventEnvelope{
+					ID:        payload.ID,
+					Type:      payload.Type,
+					BoardID:   h.BoardID.String(),
+					PageID:    payload.PageID,
+					UserID:    msg.Sender.String(),
+					CreatedAt: time.Now().UTC(),
+					Payload:   msg.Content,
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				cursor, err := h.boardService.SaveEventService(ctx, &env)
+				cancel()
+				if err != nil {
+					log.Printf("Failed to save event to database log: %v", err)
+				} else {
+					env.Cursor = cursor
+					if b, err := json.Marshal(env); err == nil {
+						broadcastBytes = b
+					}
+				}
+			}
+
 			h.mu.RLock()
 			for client := range h.Clients {
 				if client.UserID == msg.Sender {
 					continue
 				}
-				switch payload.Type {
-				case "draw", "move", "delete", "cursor", "clear", "elements", "chat":
-					select {
-					case client.Send <- msg.Content:
-					default:
-						close(client.Send)
-						delete(h.Clients, client)
-					}
+				select {
+				case client.Send <- broadcastBytes:
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
 				}
 			}
 			h.mu.RUnlock()
@@ -198,6 +223,14 @@ func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Invalid board ID", http.StatusBadRequest)
 		return
+	}
+
+	cursorStr := r.URL.Query().Get("cursor")
+	var lastSeenCursor int64 = 0
+	if cursorStr != "" {
+		if val, err := strconv.ParseInt(cursorStr, 10, 64); err == nil {
+			lastSeenCursor = val
+		}
 	}
 
 	hub := hm.GetOrCreateHub(boardID)
@@ -216,6 +249,21 @@ func ServeWS(hm *HubManager, w http.ResponseWriter, r *http.Request) {
 		Conn:    conn,
 		Send:    make(chan []byte, 256),
 	}
+
+	// Replay missed events if client reconnected with a cursor
+	if lastSeenCursor > 0 && hub.boardService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		res, err := hub.boardService.GetEventsAfterService(ctx, boardID.String(), lastSeenCursor)
+		cancel()
+		if err == nil && len(res.Events) > 0 {
+			for _, evt := range res.Events {
+				if evtBytes, err := json.Marshal(evt); err == nil {
+					client.Send <- evtBytes
+				}
+			}
+		}
+	}
+
 	hub.Register <- client
 
 	go client.readPump(hub)
