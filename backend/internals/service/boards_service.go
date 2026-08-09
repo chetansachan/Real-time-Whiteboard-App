@@ -71,7 +71,7 @@ type Snapshot struct {
 type GetBoardByIDRespone struct {
 	model.Board
 	Snapshot Snapshot `json:"snapshot"`
-	Cursor   int      `json:"cursor"`
+	Cursor   int64    `json:"cursor"`
 }
 
 func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (GetBoardByIDRespone, error) {
@@ -88,13 +88,15 @@ func (s *BoardService) GetBoardByIDService(ctx context.Context, idStr string) (G
 		return GetBoardByIDRespone{}, fmt.Errorf("failed to get board from database: %w", err)
 	}
 
+	cursor, _ := s.repo.GetLatestCursorForBoard(ctx, boardID)
+
 	res := GetBoardByIDRespone{
 		Board: board,
 		Snapshot: Snapshot{
 			PageID:   "1",
 			Elements: []string{},
 		},
-		Cursor: 184,
+		Cursor: cursor,
 	}
 
 	return res, nil
@@ -111,13 +113,15 @@ func (s *BoardService) UpdateBoardByIDService(ctx context.Context, idStr string,
 		return GetBoardByIDRespone{}, fmt.Errorf("failed to update board title: %w", err)
 	}
 
+	cursor, _ := s.repo.GetLatestCursorForBoard(ctx, id)
+
 	res := GetBoardByIDRespone{
 		Board: board,
 		Snapshot: Snapshot{
 			PageID:   "1",
 			Elements: []string{},
 		},
-		Cursor: 184,
+		Cursor: cursor,
 	}
 
 	return res, nil
@@ -144,13 +148,15 @@ func (s *BoardService) AddPageByIDService(ctx context.Context, idStr string, pag
 		return GetBoardByIDRespone{}, fmt.Errorf("failed to get board from database: %w", err)
 	}
 
+	cursor, _ := s.repo.GetLatestCursorForBoard(ctx, id)
+
 	res := GetBoardByIDRespone{
 		Board: board,
 		Snapshot: Snapshot{
 			PageID:   page.PageID.String(),
 			Elements: []string{},
 		},
-		Cursor: 184,
+		Cursor: cursor,
 	}
 
 	return res, nil
@@ -191,4 +197,29 @@ func (s *BoardService) SavePageElementsService(ctx context.Context, pageIDStr st
 	}
 
 	return nil
+}
+
+func (s *BoardService) GetEventsAfterService(ctx context.Context, boardIDStr string, afterCursor int64) (model.EventListResponse, error) {
+	boardID, err := uuid.Parse(boardIDStr)
+	if err != nil {
+		return model.EventListResponse{}, ErrBoardNotFound
+	}
+
+	events, maxCursor, err := s.repo.GetEventsAfterCursor(ctx, boardID, afterCursor)
+	if err != nil {
+		return model.EventListResponse{}, fmt.Errorf("failed to fetch events delta: %w", err)
+	}
+
+	return model.EventListResponse{
+		Events: events,
+		Cursor: maxCursor,
+	}, nil
+}
+
+func (s *BoardService) SaveEventService(ctx context.Context, evt *model.EventEnvelope) (int64, error) {
+	cursor, err := s.repo.SaveEvent(ctx, evt)
+	if err != nil {
+		return 0, fmt.Errorf("failed to save event: %w", err)
+	}
+	return cursor, nil
 }
