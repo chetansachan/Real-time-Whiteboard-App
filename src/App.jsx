@@ -136,23 +136,32 @@ export default function App() {
 
   const handleWsMessage = useCallback((msg) => {
     if (!msg) return;
-    if (msg.type === "chat" && msg.text && msg.author) {
+    let data = msg;
+    if (msg.payload) {
+      if (typeof msg.payload === "string") {
+        try { data = JSON.parse(msg.payload); } catch { data = msg; }
+      } else if (typeof msg.payload === "object") {
+        data = msg.payload;
+      }
+    }
+    const type = data.type || msg.type;
+    if (type === "chat" && data.text && data.author) {
       setBoard((current) => ({
         ...current,
         chat: [
           ...current.chat,
-          { id: createId("chat"), author: msg.author, text: msg.text, time: "now" }
+          { id: createId("chat"), author: data.author, text: data.text, time: "now" }
         ]
       }));
-    } else if (["elements", "draw", "move", "delete", "clear"].includes(msg.type) && Array.isArray(msg.elements)) {
+    } else if (["elements", "draw", "move", "delete", "clear"].includes(type) && Array.isArray(data.elements)) {
       setBoard((current) => {
-        const targetPageId = msg.pageId || current.activePageId;
+        const targetPageId = data.pageId || current.activePageId;
         const pageExists = current.pages.some((page) => page.id === targetPageId);
         const updatedPages = pageExists
           ? current.pages.map((page) =>
-              page.id === targetPageId ? { ...page, elements: msg.elements } : page
+              page.id === targetPageId ? { ...page, elements: data.elements } : page
             )
-          : [...current.pages, { id: targetPageId, name: String(current.pages.length + 1), elements: msg.elements }];
+          : [...current.pages, { id: targetPageId, name: String(current.pages.length + 1), elements: data.elements }];
         
         return {
           ...current,
@@ -165,6 +174,7 @@ export default function App() {
   const ws = useBoardWebSocket({
     boardId: board.boardId,
     enabled: isBoardOpen && Boolean(board.boardId),
+    initialCursor: board.cursor || 0,
     onMessage: handleWsMessage
   });
 
