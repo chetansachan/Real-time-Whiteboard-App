@@ -26,6 +26,7 @@ func SetupRouter(pool *pgxpool.Pool) http.Handler {
 		websocket.ServeWS(hm, w, r)
 	})
 	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
+	mux.HandleFunc("GET /api/boards/{id}/events", boardController.GetEventsAfterController)
 	mux.HandleFunc("GET /api/boards", boardController.GetAllBoardsContoller)
 	mux.HandleFunc("DELETE /api/boards/{id}", boardController.DeleteBoardByIdController)
 	return withCORS(mux)
