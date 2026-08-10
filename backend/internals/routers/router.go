@@ -1,48 +1,57 @@
+// Package routers wires HTTP routes to controllers and applies the
+// production middleware stack (recovery, request id, access log, CORS,
+// timeout).
 package routers
 
 import (
+	"log/slog"
 	"net/http"
 
+	"realtime-whiteboard/internals/config"
 	"realtime-whiteboard/internals/controllers"
+	"realtime-whiteboard/internals/middleware"
 	"realtime-whiteboard/internals/repository"
 	"realtime-whiteboard/internals/service"
 	"realtime-whiteboard/internals/websocket"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func SetupRouter(pool *pgxpool.Pool) http.Handler {
-	boardRepo := repository.NewBoardRepository(pool)
-	boardService := service.NewBoardService(boardRepo)
-	boardController := controllers.NewBoardController(boardService)
+// SetupRouter builds the full HTTP handler. The order of middleware is:
+// recovery (outermost) -> request id -> access log -> CORS -> timeout ->
+// handler.
+func SetupRouter(cfg *config.Config, pool repository.BoardRepository, logger *slog.Logger) http.Handler {
+	boardService := service.NewBoardService(pool)
+	boardController := controllers.NewBoardController(boardService, logger)
 
-	hm := websocket.NewHubManager(boardService)
+	hubManager := websocket.NewHubManager(boardService, logger)
+	wsCfg := websocket.NewConfig()
+	wsCfg.ReadLimit = cfg.WSReadLimit
+	wsCfg.WriteWait = cfg.WSWriteWait
+
+	wsHandler := func(w http.ResponseWriter, r *http.Request) {
+		websocket.ServeWS(hubManager, wsCfg, logger, w, r)
+	}
+
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/boards", boardController.CreateBoard)
+	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoard)
+	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoard)
+	mux.HandleFunc("DELETE /api/boards/{id}", boardController.DeleteBoard)
+	mux.HandleFunc("GET /api/boards", boardController.ListBoards)
+	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPage)
+	mux.HandleFunc("GET /api/boards/{id}/events", boardController.GetEventsAfter)
+	// --- Elements snapshot (synchronous HTTP persist, no WS race) ---
+	mux.HandleFunc("PUT /api/boards/{id}/pages/{pageId}/elements", boardController.SavePageElements)
+	mux.HandleFunc("GET /ws/boards/{boardId}/join", wsHandler)
+	mux.HandleFunc("GET /healthz", boardController.Healthz)
 
-	mux.HandleFunc("POST /api/boards", boardController.CreateBoardController)
-	mux.HandleFunc("GET /api/boards/{id}", boardController.GetBoardByIDController)
-	mux.HandleFunc("PATCH /api/boards/{id}", boardController.UpdateBoardByIDController)
-	mux.HandleFunc("GET /ws/boards/{boardId}/join", func(w http.ResponseWriter, r *http.Request) {
-		websocket.ServeWS(hm, w, r)
-	})
-	mux.HandleFunc("POST /api/boards/{id}/pages", boardController.AddPageByIDController)
-	mux.HandleFunc("GET /api/boards/{id}/events", boardController.GetEventsAfterController)
-	mux.HandleFunc("GET /api/boards", boardController.GetAllBoardsContoller)
-	mux.HandleFunc("DELETE /api/boards/{id}", boardController.DeleteBoardByIdController)
-	return withCORS(mux)
-}
-
-func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+	handler := middleware.Recovery(logger)(
+		middleware.RequestID(
+			middleware.AccessLog(logger)(
+				middleware.CORS(cfg.AllowedOrigins)(
+					middleware.Timeout(cfg.RequestTimeout)(mux),
+				),
+			),
+		),
+	)
+	return handler
 }
