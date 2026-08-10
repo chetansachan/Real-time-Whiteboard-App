@@ -276,6 +276,12 @@ export function useWhiteboardController({ boardId, enabled, onToast }) {
     initialCursor: state.board?.cursor || 0,
     onMessage: handleWsMessage
   });
+  // Keep ws in a ref so pointer handlers can call sendMessage without
+  // capturing it in their dependency arrays.
+  const wsRef = useRef(ws);
+  useEffect(() => {
+    wsRef.current = ws;
+  }, [ws]);
 
   // --- Actions -----------------------------------------------------------
 
@@ -538,6 +544,17 @@ export function useWhiteboardController({ boardId, enabled, onToast }) {
           type: "SET_BOARD",
           updater: (b) => updateActivePageElements(b, next, b.hasUserContent)
         });
+        // Broadcast live position to collaborators at ~30fps.
+        const now = Date.now();
+        if (now - (drag.lastMoveBroadcast || 0) > 33) {
+          drag.lastMoveBroadcast = now;
+          wsRef.current.sendMessage({
+            type: "move",
+            pageId: activePageIdRef.current,
+            elements: next,
+            sender: userNameRef.current
+          });
+        }
         return;
       }
       if (drag.kind === "marquee") {
@@ -573,13 +590,29 @@ export function useWhiteboardController({ boardId, enabled, onToast }) {
       }
     }
     if (drag?.kind === "move") {
-      pushUndo(drag.startElements);
+      // Push the PRE-move state onto undo.
+      setUndoStack((stack) => [...stack.slice(-29), drag.startElements]);
       setRedoStack([]);
+      // Broadcast the final element positions and persist via REST.
+      // We DON'T call commitElements() here because it would push a second
+      // undo entry (the post-move state). Instead broadcast + save manually.
+      const finalElements = elementsRef.current;
+      wsRef.current?.sendMessage?.({
+        type: "elements",
+        pageId: activePageIdRef.current,
+        elements: finalElements,
+        sender: userNameRef.current
+      });
+      const bid = boardIdRef.current;
+      const pid = activePageIdRef.current;
+      if (bid && pid) {
+        savePageElements(bid, pid, finalElements).catch(() => {});
+      }
     }
     if (drag?.kind === "marquee") {
       setSelectionBox(null);
     }
-  }, [addElementToBoard, pushUndo]);
+  }, [addElementToBoard]);
 
   const handleWheel = useCallback((event) => {
     if (!event.ctrlKey && !event.metaKey) return;
