@@ -27,23 +27,33 @@ export function sanitizeBoard(board) {
 export function mergeRemoteBoardMetadata(currentBoard, remoteBoard) {
   if (!remoteBoard?.boardId) return currentBoard;
 
-  const existingById = new Map(currentBoard.pages.map((page) => [page.id, page]));
-  const existingByName = new Map(currentBoard.pages.map((page) => [page.name, page]));
-  const firstExistingPage = currentBoard.pages[0];
+  // If currentBoard belongs to a different boardId, do not leak its local pages into remoteBoard!
+  const isDifferentBoard = Boolean(currentBoard?.boardId && currentBoard.boardId !== remoteBoard.boardId);
+  const sourcePages = isDifferentBoard ? [] : currentBoard.pages || [];
+
+  const existingById = new Map(sourcePages.map((page) => [page.id, page]));
+  const existingByName = new Map(sourcePages.map((page) => [page.name, page]));
 
   const pages = (remoteBoard.pages || []).map((remotePage, index) => {
     const id = remotePage.pageId || remotePage.id;
     const name = remotePage.name || String(index + 1);
-    const existing = existingById.get(id) || existingByName.get(name) || (index === 0 ? firstExistingPage : null);
+    const existing = existingById.get(id) || existingByName.get(name) || null;
     const remoteElements = Array.isArray(remotePage.elements) ? remotePage.elements : [];
 
-    let mergedElements = remoteElements;
-    if (remoteElements.length === 0 && existing?.elements?.length > 0 && !existing.elements.every((e) => e.isTemplate)) {
+    // Remote (DB) data is always the source of truth.
+    // If the server returns an empty array it means the board was intentionally
+    // cleared — do NOT restore elements from local state.
+    // The only exception: a page that has never been saved to the DB at all
+    // (remoteElements is null/undefined rather than an empty array). We detect
+    // this by checking whether the remotePage even had an elements field.
+    const serverHasElements = Array.isArray(remotePage.elements);
+    let mergedElements;
+    if (!serverHasElements && existing?.elements?.length > 0 && !existing.elements.every((e) => e.isTemplate)) {
+      // Server page has no elements field at all → truly unsaved, use local draft.
       mergedElements = existing.elements.filter((e) => !e.isTemplate);
-    } else if (remoteElements.length > 0 && existing?.elements?.length > 0) {
-      const remoteIds = new Set(remoteElements.map((e) => e.id));
-      const extraLocal = existing.elements.filter((e) => !remoteIds.has(e.id) && !e.isTemplate);
-      mergedElements = [...remoteElements, ...extraLocal];
+    } else {
+      // Server returned elements (even if []) → always use exactly what the server has.
+      mergedElements = remoteElements;
     }
 
     return {
@@ -103,36 +113,57 @@ export function addUserElements(board, newElements) {
 }
 
 export function getElementBounds(element) {
-  if (element.type === "stroke") {
-    const xs = element.points.map(([x]) => x);
-    const ys = element.points.map(([, y]) => y);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    return {
-      x: minX,
-      y: minY,
-      width: Math.max(1, Math.max(...xs) - minX),
-      height: Math.max(1, Math.max(...ys) - minY)
-    };
+  if (!element) return { x: 0, y: 0, width: 0, height: 0 };
+
+  if (element.type === "stroke" && Array.isArray(element.points) && element.points.length > 0) {
+    const xs = element.points
+      .map((p) => (Array.isArray(p) ? p[0] : p?.x))
+      .filter((v) => typeof v === "number" && !isNaN(v));
+    const ys = element.points
+      .map((p) => (Array.isArray(p) ? p[1] : p?.y))
+      .filter((v) => typeof v === "number" && !isNaN(v));
+
+    if (xs.length > 0 && ys.length > 0) {
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      return {
+        x: minX,
+        y: minY,
+        width: Math.max(1, Math.max(...xs) - minX),
+        height: Math.max(1, Math.max(...ys) - minY)
+      };
+    }
   }
 
+  const x = typeof element.x === "number" ? element.x : 0;
+  const y = typeof element.y === "number" ? element.y : 0;
+
   if (["line", "arrow"].includes(element.type)) {
-    const x = Math.min(element.x, element.x + element.width);
-    const y = Math.min(element.y, element.y + element.height);
-    return { x, y, width: Math.max(1, Math.abs(element.width)), height: Math.max(1, Math.abs(element.height)) };
+    const w = element.width || 0;
+    const h = element.height || 0;
+    const minX = Math.min(x, x + w);
+    const minY = Math.min(y, y + h);
+    return { x: minX, y: minY, width: Math.max(1, Math.abs(w)), height: Math.max(1, Math.abs(h)) };
   }
 
   if (element.type === "text") {
     const lines = Math.max(1, Math.ceil((element.text || "").length / 28));
-    return { x: element.x, y: element.y, width: element.width || 220, height: lines * (element.size || 18) * 1.25 };
+    return { x, y, width: element.width || 220, height: lines * (element.size || 18) * 1.25 };
   }
 
-  return { x: element.x, y: element.y, width: element.width || 1, height: element.height || 1 };
+  return { x, y, width: Math.max(1, Math.abs(element.width || 1)), height: Math.max(1, Math.abs(element.height || 1)) };
 }
 
 export function isPointInElement(point, element) {
+  if (!point || !element) return false;
   const box = getElementBounds(element);
-  return point.x >= box.x - 10 && point.x <= box.x + box.width + 10 && point.y >= box.y - 10 && point.y <= box.y + box.height + 10;
+  const tolerance = Math.max(16, (element.size || 5) * 2);
+  return (
+    point.x >= box.x - tolerance &&
+    point.x <= box.x + box.width + tolerance &&
+    point.y >= box.y - tolerance &&
+    point.y <= box.y + box.height + tolerance
+  );
 }
 
 export function getElementsInBox(elements, box) {
