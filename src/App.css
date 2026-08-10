@@ -1619,3 +1619,71 @@ canvas {
     padding: 18px;
   }
 }
+
+/* ==========================================================================
+   SHARED COMPONENTS
+   ========================================================================== */
+
+.error-fallback {
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  width: 100vw;
+  height: 100vh;
+  padding: 32px;
+  text-align: center;
+  background: #f8faf9;
+  color: #171717;
+}
+
+.error-fallback h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.error-fallback-message {
+  margin: 0;
+  color: #475467;
+  max-width: 480px;
+}
+
+.error-fallback-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.error-fallback-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: #171717;
+  color: #fff;
+}
+
+.error-fallback-actions button:last-child {
+  background: transparent;
+  color: #171717;
+  border: 1px solid #d0d5dd;
+}
+
+.loading-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loading-spinner .spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
