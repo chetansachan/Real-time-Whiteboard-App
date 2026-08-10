@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addBoardPage, createBoard, deleteBoard as deleteBoardApi, getBoard, getBoards, updateBoardTitle } from "../services/boardApi.js";
 import { mergeRemoteBoardMetadata } from "../utils/whiteboard.js";
@@ -9,17 +9,27 @@ export function useBoardsList({ enabled = true } = {}) {
     queryFn: getBoards,
     enabled,
     retry: 1,
+    staleTime: 0,
+    refetchOnMount: true,
     refetchOnWindowFocus: false
   });
 }
 
-export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
+export function useBoardApi({ boardId, board, enabled = true, setBoard, setToast }) {
+  const targetBoardId = boardId || board?.boardId;
   const queryClient = useQueryClient();
 
+  // Keep setBoard in a ref so the boardQuery effect below has a stable
+  // dependency and never fires in an infinite loop.
+  const setBoardRef = useRef(setBoard);
+  useEffect(() => {
+    setBoardRef.current = setBoard;
+  }, [setBoard]);
+
   const boardQuery = useQuery({
-    queryKey: ["board", board.boardId],
-    queryFn: () => getBoard(board.boardId),
-    enabled: enabled && Boolean(board.boardId),
+    queryKey: ["board", targetBoardId],
+    queryFn: () => getBoard(targetBoardId),
+    enabled: enabled && Boolean(targetBoardId),
     retry: 1,
     refetchOnWindowFocus: false
   });
@@ -84,8 +94,10 @@ export function useBoardApi({ board, enabled = true, setBoard, setToast }) {
 
   useEffect(() => {
     if (!boardQuery.data) return;
-    setBoard((current) => mergeRemoteBoardMetadata(current, boardQuery.data));
-  }, [boardQuery.data, setBoard]);
+    // Use the ref so this effect never re-fires just because setBoard changed identity.
+    setBoardRef.current((current) => mergeRemoteBoardMetadata(current, boardQuery.data));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardQuery.data]);
 
   const saveTitle = useCallback(() => {
     if (!board.boardId) {
